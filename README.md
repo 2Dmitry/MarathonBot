@@ -5,11 +5,11 @@ Take an event from Telegram and place a bet on MarathonBet
 **В расширенной установке выбрать для простоты "append to PATH"**   
 
 2. Установить пакеты:  
-- *pip install -r requirements.txt
+- *pip install -r requirements.txt*
 
 3. Установить pycharm
 
 4. Скачать хром драйвер с https://chromedriver.chromium.org/ распаковать и сложить exe в папку с проектом
 
 Для сборки проекта использовать команду:
-- *C:\Users\Administrator\Documents\GitHub\value_bet_bot> pyinstaller -F main.py
+- *C:\Users\Administrator\Documents\GitHub\value_bet_bot> pyinstaller -F main.py*
