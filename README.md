@@ -1,10 +1,8 @@
 # MarathonBot
 Take an event from Telegram and place a bet on MarathonBet
 
-# Бот для автоматизации value ставок
-
 1. Установить необходимый для работы python 3.8  https://www.python.org/ftp/python/3.8.5/python-3.8.5-amd64.exe
-**для простоты в расширенной установке указать галочку append to PATH**   
+**В расширенной установке выбрать для простоты "append to PATH"**   
 
 2. Установить пакеты:  
 - pip install -r requirements.txt
