@@ -18,3 +18,13 @@ Take an event from Telegram and place a bet on MarathonBet
 
 Для сборки проекта использовать команду:
 - *C:\Users\Administrator\Documents\GitHub\value_bet_bot> pyinstaller -F main.py*
+
+	Удаленка
+IP 	    185.231.153.164
+Логин 	Administrator
+Пароль 	QxyXSfY1npEwEuP2
+
+	Прокси
+IP	    94.45.191.119:45785
+Логин 	pvity4
+Пароль	M5c2LuH
