@@ -1,7 +1,9 @@
 # MarathonBot
 Take an event from Telegram and place a bet on MarathonBet
-- Официальная ссылка: https://www.marathonbet.ru
-- Рабочее зеркало:  http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1
+
+- Официальная ссылка MarathonBet: https://www.marathonbet.ru
+
+- Рабочее зеркало MarathonBet:  http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1
 
 *Зеркало искать на сайте https://bkin-14573.website/zerkala или спрашивать у бота в Телеграм канале @BKinfo_bot*
 
