@@ -1,5 +1,9 @@
 # MarathonBot
 Take an event from Telegram and place a bet on MarathonBet
+- Официальная ссылка: https://www.marathonbet.ru
+- Рабочее зеркало:  http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1
+*Зеркало искать на сайте https://bkin-14573.website/zerkala или спрашивать у бота в Телеграм канале @BKinfo_bot*
+
 
 1. Установить необходимый для работы python 3.8  https://www.python.org/ftp/python/3.8.5/python-3.8.5-amd64.exe
 **В расширенной установке выбрать для простоты "append to PATH"**   
@@ -19,12 +23,10 @@ Take an event from Telegram and place a bet on MarathonBet
 Для сборки проекта использовать команду:
 - *C:\Users\Administrator\Documents\GitHub\value_bet_bot> pyinstaller -F main.py*
 
-	Удаленка
-IP 	    185.231.153.164
-Логин 	Administrator
-Пароль 	QxyXSfY1npEwEuP2
+**Необходимые учетки**
 
-	Прокси
-IP	    94.45.191.119:45785
-Логин 	pvity4
-Пароль	M5c2LuH
+Удаленка // IP: 185.231.153.164 // Логин: Administrator // Пароль: QxyXSfY1npEwEuP2
+
+Прокси // IP: 94.45.191.119:45785 // Логин: pvity4 // Пароль: M5c2LuH
+
+MarathonBet (моя учетка) // Логин:
