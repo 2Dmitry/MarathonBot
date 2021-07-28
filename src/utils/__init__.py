@@ -17,13 +17,13 @@ class WaitForTextMatch(object):
             return False
 
 
-def get_driver(profile_path, login):
+def get_driver(path_browser_profile, username):
     options = webdriver.ChromeOptions()
-    options.add_argument("user-data-dir={}".format(profile_path))
+    options.add_argument("user-data-dir={}".format(path_browser_profile))
     options.add_argument("--start-maximized")
     options.add_experimental_option("excludeSwitches", ["ignore-certificate-errors", "safebrowsing-disable-download-protection", "safebrowsing-disable-auto-update", "disable-client-side-phishing-detection"])
     driver = webdriver.Chrome(options=options)
-    open("{}/{}".format(profile_path, login), "w").close()
+    open("{}/{}".format(path_browser_profile, username), "w").close()
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
       "source": """
         Object.defineProperty(navigator, 'webdriver', {

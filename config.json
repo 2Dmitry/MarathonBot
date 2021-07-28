@@ -1,0 +1,15 @@
+{
+	"accounts" : [
+	{
+		"path" : "/workdir/browser_profiles",
+		"username" : "6714278",
+		"password" : "Gup2702dims"
+	}
+	],
+
+	"set_balance" : 1000,
+	"bet_value" : 1,
+	"coeff_diff_percentage" : 15,
+	"balance_refresh_freq" : 10,
+	"pause_time" : 0
+}
