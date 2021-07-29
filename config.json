@@ -1,5 +1,5 @@
 {
-	"accounts" : [
+	"account" : [
 	{
 		"path" : "/workdir/browser_profiles",
 		"username" : "6714278",
@@ -7,9 +7,7 @@
 	}
 	],
 
-	"set_balance" : 1000,
-	"bet_value" : 1,
+	"mount_bet" : 15,
 	"coeff_diff_percentage" : 15,
-	"balance_refresh_freq" : 10,
-	"pause_time" : 0
+	"pause_time_after_bet" : 0
 }
