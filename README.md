@@ -16,13 +16,17 @@ P.S. В расширенной установке выбрать для прос
 
 - *pip install -r requirements.txt*
 
-3. Установить pycharm
+3. Установить Телеграм Бот API
 
-4. Скачать хром драйвер с https://chromedriver.chromium.org/ распаковать и сложить exe в папку с проектом
+- *pip install pyTelegramBotAPI*
 
-5. На вдс скачать и установить Chrome https://www.google.ru/chrome/
+4. Установить pycharm
 
-6. На вдс скачать и установить Proxifier https://www.proxifier.com/download/
+5. Скачать хром драйвер с https://chromedriver.chromium.org/ распаковать и сложить exe в папку с проектом
+
+6. На вдс скачать и установить Chrome https://www.google.ru/chrome/
+
+7. На вдс скачать и установить Proxifier https://www.proxifier.com/download/
 
 **Для сборки проекта использовать команду:**
 - *C:\Users\Administrator\Documents\GitHub\value_bet_bot> pyinstaller -F main.py*
