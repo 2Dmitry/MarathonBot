@@ -211,9 +211,12 @@ def start_worker_mar(config, path, username, password):
         # -----------TODO шаги для совершения ставки здесь это надо в цикл-----------
 
         logger.debug('FINISH') # TODO удалить строку
+
         while True:
-            logger.debug('circle')  # TODO удалить строку
+            logger.debug('start of cycle')  # TODO удалить строку
             time.sleep(3)
+            logger.debug('end of cycle')  # TODO удалить строку
+
         driver_bet365.close()
         quit()
     except Exception as e:
