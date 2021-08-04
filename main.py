@@ -4,7 +4,8 @@ import os
 import shutil
 import multiprocessing
 from datetime import datetime
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, InvalidArgumentException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, InvalidArgumentException, \
+    NoSuchElementException
 # from win32ctypes.core import ctypes
 from src.utils import get_driver, WaitForTextMatch
 from multiprocessing import Process, Queue
@@ -14,17 +15,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 import logging
 from src import *
+import telebot  # Подключаем Telegram API
+from telebot import types  # Подключаем библиотеку для создания кнопок
 
-# TODO  зеркало марафона меняется со временем, надо сделать обновление зеркала,
-#       актуальаня инфа есть в Телеграме в бот-канале  "Зеркала букмекеров BK-INFO"
-MARATHON_MIRROR = 'http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1'
 
 # кнопки, которые есть в бк MarathonBet
 EXIT_BUTTON_CLASS = 'marathon_icons-exit_icon'
 USERNAME_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__input'
 PASSWORD_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__password'
 SIGN_IN_BUTTON_CLASS = 'form__element.auth-form__submit.auth-form__enter.green'
-MESSAGE_CLOSE_BUTTON_CLASS = 'button.btn-cancel.no.simplemodal-close'
+CLOSE_BK_MESSAGE_BUTTON_CLASS = 'button.btn-cancel.no.simplemodal-close'
+CLOSE_PROMO_MESSAGE_BUTTON_CLASS = 'v-icon.notranslate.prevent-page-leave-modal-button.v-icon--link.v-icon--auto-fill'
 SEARCH_ICON_BUTTON_XPATH = '//*[@id="header_container"]/div/div/div[1]/div[2]/div[2]/div/div[2]/div/button'
 SEARCH_FIELD_CLASS = 'search-widget_input'
 SEARCH_ENTER_BUTTON_XPATH = '//*[@id="header_container"]/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/div[1]/div/button[1]'
@@ -32,37 +33,95 @@ SEARCH_SPORTS_TAB_BUTTON_XPATH = '//*[@id="search-result-container"]/div[1]/div/
 EVENT_MORE_BUTTON_CLASS = 'event-more-view'
 STAKE_FIELD_CLASS = 'stake.stake-input.js-focusable'
 STAKE_ACCEPT_BUTTON_XPATH = '//*[@id="betslip_placebet_btn_id"]'
+CATEGORY_CLASS = 'category-label-link'
+ALL_MARKETS_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'
 
-# создаем необходимые папки
-os.makedirs('workdir/logs', exist_ok=True)
-os.makedirs('workdir/bets', exist_ok=True)
-os.makedirs('workdir/history', exist_ok=True)
 
+
+COUPON_COEFF_FPATH = '/html/body/div[12]/div/div[2]/div/div/div[2]/div/div/div[1]/div[7]/table/tbody/tr/td/div/div[1]/div[2]/table/tbody/tr/td[2]/table/tbody/tr[1]/td[2]/span[1]'
+COUPON_COEFF_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/div[1]/div[2]/table/tbody/tr/td[2]/table/tbody/tr[1]/td[2]/span'
+SOCCER_WINNER1_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[3]'
+SOCCER_WINNER2_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[5]'
+
+
+
+
+os.makedirs('workdir/logs', exist_ok=True)  # создаем необходимые папки
+os.makedirs('workdir/bets', exist_ok=True)  # создаем необходимые папки
+os.makedirs('workdir/history', exist_ok=True)  # создаем необходимые папки
+# TODO сделать 1 лог файл, а не несколько с одинаковой херней
 logging.basicConfig(filename="workdir/logs/{}.log".format(datetime.now().strftime('%d-%m-%Y_%H-%M-%S')),
                     format=u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s',
                     level=logging.DEBUG)
-
 # suppress logging from imported libraries / подавить ведение журнала из импортированных библиотек
 logging.getLogger('selenium.webdriver.remote.remote_connection').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
-logging.debug("Start")
-
-# перемещаем историю сделанных ставок из корня проекта в соответсвующую папку
-try:
+logging.debug('Start')
+try:  # перемещаем историю сделанных ставок из корня проекта в соответсвующую папку
     shutil.move('bets.json', 'workdir/bets/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
 except FileNotFoundError:
     pass
+try:  # читаем конфиг файл
+    with open('config.json') as f:
+        CONFIG_JSON = json.load(f)
+        logging.info('Config file open')
+except FileNotFoundError as e:
+    logging.critical('CONFIG FILE NOT FOUND')
+    logging.critical(e)
+    time.sleep(7200)
+    raise e
 
 
-def login(driver_mar, username, password):
+# TODO  зеркало марафона меняется со временем, надо сделать обновление зеркала,
+#       актуальаня инфа есть в Телеграме в бот-канале  "Зеркала букмекеров BK-INFO"
+MARATHON_MIRROR = CONFIG_JSON['marathon_mirror']
+TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])
+BOT_ID = CONFIG_JSON['bot_id']
+PATH = CONFIG_JSON['path']
+USERNAME = CONFIG_JSON['username']
+PASSWORD = CONFIG_JSON['password']
+BET_MOUNT_RUB = CONFIG_JSON['bet_mount_rub']
+COEFF_DIFF_PERCENTAGE = CONFIG_JSON['coeff_diff_percentage']
+
+QUEUE = Queue()
+
+
+def put_in_queue(text):
+    event = {}                                                          # 0123456789@0123456789@0123456789@0123456789@0123456789@0123456789@0123456789@0123456789@
+    event['sport'] = text[:text.find(';')]                              # Футбол; League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
+    text = text[text.find(';') + 2:]                                    # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
+    event['league'] = text[text.find(':') + 2:text.find(';')]           # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
+    text = text[text.find(';') + 2:]                                    # Ранхейм vs Фредрикстад: O(1)=1.57;
+    event['team1'] = text[:text.find(' vs ')]                           # Ранхейм vs Фредрикстад: O(1)=1.57;
+    event['team2'] = text[text.find(' vs ') + 4:text.find(':')]         # Ранхейм vs Фредрикстад: O(1)=1.57;
+    text = text[text.find(':') + 2:]                                    # O(1)=1.57;
+    event['type'] = text[:text.find('=')]                               # O(1)=1.57;
+    event['coeff'] = float(text[text.find('=') + 1:text.find(';')])     # O(1)=1.57;
+    print(event)  # TODO DELETE
+    QUEUE.put_nowait(event)
+
+
+@TELEGRAM_BOT.message_handler(content_types=['text'])
+def get_text_messages(message):
+    if message.text == 'bot id':
+        TELEGRAM_BOT.send_message(message.from_user.id, BOT_ID)
+    elif message.text == ('bot' + BOT_ID + ' привет'):
+        TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' говорит: "Привет <3"')
+    elif 0 < message.text.find(';'):
+        put_in_queue(message.text)
+        TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' получил событие')
+    else:
+        TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' вас не понимает')
+
+
+def login(driver_mar):
     logging.debug('___login function start___')
 
     wait_2 = WebDriverWait(driver_mar, 2)
     wait_3 = WebDriverWait(driver_mar, 3)
     wait_5 = WebDriverWait(driver_mar, 5)
 
-    driver_mar.get(MARATHON_MIRROR)
-    logging.info('Opened the site page')  # открыл сраницу сайта
+    logging.info('Opened the site page')
 
     try:
         wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
@@ -72,13 +131,13 @@ def login(driver_mar, username, password):
     except TimeoutException:
         username_field = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, USERNAME_FIELD_CLASS)))
         username_field.clear()
-        username_field.send_keys(username)
+        username_field.send_keys(USERNAME)
         logging.exception('Username entered')
         time.sleep(2)
 
     password_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, PASSWORD_FIELD_CLASS)))
     password_field.clear()
-    password_field.send_keys(password)
+    password_field.send_keys(PASSWORD)
     logging.info('Password entered')
     time.sleep(1)
 
@@ -94,23 +153,40 @@ def login(driver_mar, username, password):
     logging.debug('___login function end___')
 
 
-def close_message(driver_mar):
-    logging.debug('___close_message function start___')
+def close_bk_message(driver_mar):
+    logging.debug('___close_bk_message function start___')
 
-    wait_1 = WebDriverWait(driver_mar, 1)
+    wait_2 = WebDriverWait(driver_mar, 2)
 
     try:
-        message_close_button = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, MESSAGE_CLOSE_BUTTON_CLASS)))
+        message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_BK_MESSAGE_BUTTON_CLASS)))
     except TimeoutException:
-        logging.exception('No messages from a bookmaker') # сообщений/уведомлений от букера нет, закрывать окно не надо
+        logging.exception('No messages from a bookmaker')  # сообщений/уведомлений от букера нет, закрывать окно не надо
         # TODO может ли быть два окна подряд? хз..хз...
-        logging.debug('___close_message function end___')
+        logging.debug('___close_bk_message function end___')
         return
     message_close_button.click()
     logging.info('Close message button found and click')
-    time.sleep(1)
 
-    logging.debug('___close_message function end___')
+    logging.debug('___close_bk_message function end___')
+
+
+def close_promo_message(driver_mar):
+    logging.debug('___close_promo_message function start___')
+
+    wait_2 = WebDriverWait(driver_mar, 2)
+
+    try:
+        message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_PROMO_MESSAGE_BUTTON_CLASS)))
+    except TimeoutException:
+        logging.exception('No promo message from a bookmaker')  # сообщений/уведомлений от букера нет, закрывать окно не надо
+        # TODO может ли быть два окна подряд? хз..хз...
+        # logging.debug('___close_promo_message function end___')
+        return
+    message_close_button.click()
+    logging.info('Close promo message button found and click')
+
+    #logging.debug('___close_promo_message function end___')
 
 
 def search_event(driver_mar, event_name):
@@ -118,13 +194,14 @@ def search_event(driver_mar, event_name):
 
     wait_5 = WebDriverWait(driver_mar, 5)
 
-    search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
     try:
+        search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
         search_icon_button.click()
-    except ElementClickInterceptedException as e: # данное исключение бывает в том случае, если открыта и не решена гугл капча
-        logging.exception('Search icon button not clickable')
+    except ElementClickInterceptedException as e:  # данное исключение бывает в том случае, если открыта и не решена гугл капча
+        logging.exception('Search icon button found and not clickable')
         logging.critical(e)
         logging.debug('___search_event function end___')
+        time.sleep(7200)
         raise e
     logging.info('Search icon button found and click')
     time.sleep(1)
@@ -138,132 +215,299 @@ def search_event(driver_mar, event_name):
     search_enter_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ENTER_BUTTON_XPATH)))
     search_enter_button.click()
     logging.info('Search enter button found and click')
-    time.sleep(3)
+    time.sleep(1)
 
     try:
         search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException as e:
-        logging.debug('Cannot click on the button (search_sport_tab_button) because no events were found')
-        # не найдено ни одного матча соответствующего поиску
+        logging.debug('Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
         logging.exception(e)
-        time.sleep(30)
         logging.debug('___search_event function end___')
         return
     search_sport_tab_button.click()
     logging.info('Search sports tab button found and click')
-    time.sleep(1)
+    time.sleep(0.66)
 
     event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
     event_more_button.click()
     logging.info('Event more button found and click')
+    time.sleep(0.66)
+
+    event_more_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, ALL_MARKETS_BUTTON_FPATH)))
+    event_more_button.click()
+    logging.info('Event all markets button found and click')
     time.sleep(1)
 
     logging.debug('___search_event function end___')
 
 
-def start_worker_mar(config, path, username, password):
-    # спизжено с тырнета
-    fileh = logging.FileHandler('workdir/logs/{}-{}.txt'.format(username, datetime.now().strftime('%d-%m-%Y_%H-%M-%S')), 'a', encoding='utf-8')
-    logger = logging.getLogger(__name__)  # root logger
-    formatter = logging.Formatter('%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s')
-    fileh.setFormatter(formatter)
-    for hdlr in logger.handlers[:]:  # remove all old handlers
-        logger.removeHandler(hdlr)
-    logger.addHandler(fileh)  # set the new handler
-    logger.debug("THREAD module name {} START".format(__name__))
+def get_table_list(driver_mar, str):
+    table_lst = []
+    for table in driver_mar.find_elements_by_tag_name('div'):
+        if table.get_attribute('class') == '':
+            table_once = table.find_elements_by_class_name('market-table-name')
+            if len(table_once) == 1:
+                if table_once[0].text == str:
+                    print(table_once[0].text)
+                    for table_once_tr in table.find_elements_by_tag_name('tr'):
+                        for table_once_tr_td in table_once_tr.find_elements_by_tag_name('td'):
+                            table_lst.append(table_once_tr_td)
+                            # print(f'{table_once_tr_td.text};\n')  # TODO DELETE
+                    break
+    return table_lst
+
+
+def sort_table_list(lst, team_num):
+    new_lst = []
+    if team_num == 1:
+        for i in range(0, len(lst), 2):
+            new_lst.append(lst[i])
+    if team_num == 2:
+        for i in range(1, len(lst), 2):
+            new_lst.append(lst[i])
+    return new_lst
+
+
+def collect_handicap_str(str, handicap_value):
+    if str == 'asia':
+        if handicap_value < 0:
+            str = f'({handicap_value + 0.25},{handicap_value - 0.25})'
+            if handicap_value + 0.25 == 0:
+                str = f'(0,{handicap_value - 0.25})'
+            pass
+        if handicap_value > 0:
+            str = f'({handicap_value - 0.25},+{handicap_value + 0.25})'
+            if handicap_value - 0.25 == 0:
+                str = f'(0,+{handicap_value + 0.25})'
+            pass
+    if str == 'simple':  # обычная фора
+        if handicap_value == 0:
+            str = '(0)'
+        if handicap_value < 0:
+            str = f'({handicap_value})'
+        if handicap_value > 0:
+            str = f'(+{handicap_value})'
+        pass
+    return str
+
+
+def collect_total_str(total_value):
+    if total_value == 0:
+        return f'(0)'
+    else:
+        return f'({total_value})'
+
+
+def change_language(driver_mar):
+    wait_2 = WebDriverWait(driver_mar, 2)
+
+    lang_settings_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]')))
+    lang_settings_button.click()
+    # logging.info('')
+    time.sleep(1)
+
+    languages_rus_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]/div[2]/div/div[2]/span[6]/span[2]')))
+    languages_rus_button.click()
+    # logging.info('')
+    time.sleep(1)
+
+
+def start_marathon_bot(QUEUE):
+    # спизжено с тырнета TODO думаю можно удалять, нахера столько логов, это же для нескольких аккаунтов надо
+    # fileh = logging.FileHandler('workdir/logs/{}-{}.txt'.format(USERNAME, datetime.now().strftime('%d-%m-%Y_%H-%M-%S')), 'a', encoding='utf-8')
+    # logger = logging.getLogger(__name__)  # root logger
+    # formatter = logging.Formatter('%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s')
+    # fileh.setFormatter(formatter)
+    # for hdlr in logger.handlers[:]:  # remove all old handlers
+    #     logger.removeHandler(hdlr)
+    # logger.addHandler(fileh)  # set the new handler
+    # logger.debug("THREAD module name {} START".format(__name__))
     # спизжено с тырнета </end>
 
+    driver_mar = get_driver(PATH, USERNAME)
+    logging.info('Browser open')
+
+    wait_1 = WebDriverWait(driver_mar, 1)
+    wait_3 = WebDriverWait(driver_mar, 3)
+    wait_5 = WebDriverWait(driver_mar, 5)
+
+    driver_mar.get(MARATHON_MIRROR)
+
+    login(driver_mar)  # вход в аккаунт
+
+    change_language(driver_mar)
+
+    close_bk_message(driver_mar)  # закрытие уведомления от букмекера
+    close_promo_message(driver_mar)  # закрытие рекламного уведомления от букмекера
+
     try:
-        # if not os.path.isfile('{}/{}'.format(path, username)): # TODO что делают эти строки?
-        #     shutil.rmtree('{}'.format(path))
-
-        driver_mar = get_driver(path, username)
-        logger.info('Browser open')
-        time.sleep(3)
-
-        wait_05 = WebDriverWait(driver_mar, 0.5)
-        wait_1 = WebDriverWait(driver_mar, 1)
-        wait_3 = WebDriverWait(driver_mar, 3)
-        wait_5 = WebDriverWait(driver_mar, 5)
-
-        login(driver_mar, username, password) # вход в аккаунт
-
-        close_message(driver_mar) # закрытие уведомления от букмекера
-
-        search_event(driver_mar, 'Хонка - Домжале') # поиск события # TODO перенести это в цикл while-true
-
-        # -----------TODO шаги для совершения ставки здесь это надо в цикл-----------
-        # TODO выбрать исход и кликнуть по нему
-
-        bet_mount = '200'  # TODO брать инфу из конфиг файла
-        stake_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, STAKE_FIELD_CLASS))) # в купоне вбиваем сумму ставки
-        stake_field.clear()
-        stake_field.send_keys(bet_mount)
-        logging.info('Field found and bet amount entered')
-        time.sleep(1)
-
-        # TODO проверка того, что кэф не изменился
-
-        stake_accept_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, STAKE_ACCEPT_BUTTON_XPATH))) # "принять" ставку
-        stake_accept_button.click()
-        logging.info('Accept button found and click')
-        time.sleep(1)
-        # -----------TODO шаги для совершения ставки здесь это надо в цикл-----------
-
-        logger.debug('FINISH') # TODO удалить строку
-
         while True:
-            logger.debug('start of cycle')  # TODO удалить строку
-            time.sleep(3)
-            logger.debug('end of cycle')  # TODO удалить строку
+            # TODO реализовать обновление информации о событиях, на которые не было сразу проставлено, в течение дня
+            if QUEUE.empty():
+                # TODO добавить каждые 30 минут клики в "пустоту"
+                logging.info('QUEUE is empty')
+                time.sleep(1)
+                continue
+            else:
+                logging.info('Get event from QUEUE')
+                event = QUEUE.get()
 
-        driver_bet365.close()
-        quit()
+            search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
+
+            try:
+                event['id'] = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
+            except NoSuchElementException:  # если событие не найдено через строку поиска, то перейти к следующему
+                continue
+            event['id'] = event['id'][event['id'].find('+-+') + 3:]
+
+            try:  # если в купоне есть события, то купон будет очищен
+                coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
+                coupon_delete_all.click()
+                time.sleep(1)
+            except TimeoutException:
+                pass
+
+            if event['sport'] == 'Футбол':  # TODO только ФУТБОЛ
+                if event['type'][:2] == 'W1':  # победа команды 1 # TODO DELETE comment
+                    choice_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SOCCER_WINNER1_BUTTON_FPATH)))
+                    choice_button.click()
+                    print('победа команды 1')
+                    time.sleep(1)
+                if event['type'][:2] == '1X' or event['type'][:2] == 'X1':  # 1X победа команды 1 или ничья
+                    choice_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[6]')))
+                    choice_button.click()
+                    print('победа команды 1 или ничья')
+                    time.sleep(1)
+                if event['type'][:2] == 'W2':  # победа команды 2 # TODO DELETE comment
+                    choice_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SOCCER_WINNER2_BUTTON_FPATH)))
+                    choice_button.click()
+                    print('победа команды 2')
+                    time.sleep(1)
+                if event['type'][:2] == '2X' or event['type'][:2] == 'X2':  # X2 победа команды 2 или ничья # TODO DELETE comment
+                    choice_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[8]')))
+                    choice_button.click()
+                    print('победа команды 2 или ничья')
+                    time.sleep(1)
+                if event['type'][0] == 'O' or event['type'][0] == 'U':
+                    table_list = get_table_list(driver_mar, 'Тотал голов')
+                    total_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
+                    total_str = collect_total_str(total_value)
+                    if event['type'][0] == 'U':  # тотал меньше # TODO DELETE comment
+                        choice_list = sort_table_list(table_list, 1)
+                        while len(choice_list) > 1:
+                            choice_element = choice_list.pop()
+                            print(f'{choice_element.text};')
+                            if choice_element.text.find(total_str) != -1:
+                                choice_element.click()
+                        print('тотал меньше')
+                        time.sleep(1)
+                    if event['type'][0] == 'O':  # тотал больше # TODO DELETE comment
+                        choice_list = sort_table_list(table_list, 2)
+                        while len(choice_list) > 1:
+                            choice_element = choice_list.pop()
+                            print(f'{choice_element.text};')
+                            if choice_element.text.find(total_str) != -1:
+                                choice_element.click()
+                        print(f'тотал больше')
+                        time.sleep(1)
+                if event['type'][:2] == 'AH':  # азиатская фора или просто фора # TODO DELETE comment
+                    handicap_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
+                    if handicap_value * 100 % 50 == 0:
+                        handicap_asia = False
+                        handicap_simple = True
+                    else:
+                        handicap_asia = True
+                        handicap_simple = False
+                    if handicap_asia:
+                        handicap_str = collect_handicap_str('asia', handicap_value)
+                        print(f'handicap_str: {handicap_str}')  # TODO DELETE
+                        table_list = get_table_list(driver_mar, 'Победа с учетом азиатской форы')
+                    if handicap_simple:
+                        handicap_str = collect_handicap_str('simple', handicap_value)
+                        print(f'handicap_str: {handicap_str}')  # TODO DELETE
+                        table_list = get_table_list(driver_mar, 'Победа с учетом форы')
+                    if event['type'][2] == '1':  # азиатская фора или просто фора на 1ю команду # TODO DELETE comment
+                        choice_list = sort_table_list(table_list, 1)
+                        while len(choice_list) > 1:
+                            choice_element = choice_list.pop()
+                            print(f'{choice_element.text};')
+                            if choice_element.text.find(handicap_str) != -1:
+                                choice_element.click()
+                        print('азиатская фора или просто фора команда 1')
+                        time.sleep(1)
+                    if event['type'][2] == '2':  # азиатская фора или просто фора на 2ю команду # TODO DELETE comment
+                        choice_list = sort_table_list(table_list, 2)
+                        while len(choice_list) > 1:
+                            choice_element = choice_list.pop()
+                            print(f'{choice_element.text};')
+                            if choice_element.text.find(handicap_str) != -1:
+                                choice_element.click()
+                        print('азиатская фора или просто фора команда 2')
+                        time.sleep(1)
+            else:
+                logging.critical(f'EVENT TYPE IS NOT DEFINED\n {event} \n')
+                print(f'EVENT TYPE IS NOT DEFINED\n {event} \n')  # TODO DELETE
+                continue
+
+            # time.sleep(900) # TODO DELETE
+
+            coeff_element = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # ищем коэф в купоне TODO не работает с двумя и более выборами в одном купоне
+            try:
+                coeff_value = float(coeff_element.text[coeff_element.text.find(':') + 2:])
+            except ValueError:
+                # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
+                continue
+
+            if (event['coeff'] - 0.2) > coeff_value:
+                logging.info(f"NOT TRY coeff: {coeff_value} event_coeff: {event['coeff']}")
+                # TODO записать событие в лог, мол оно было, но на него не было поставлено
+                # TODO положить событие в конец очереди
+                continue
+            # if (event['coeff'] * (100 - COEFF_DIFF_PERCENTAGE)/100) > coeff_value:
+            #     logging.info(f"NOT TRY coeff: {coeff_value} event_coeff: {event['coeff']}")
+            #     continue
+
+            stake_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, STAKE_FIELD_CLASS)))  # в купоне вбиваем сумму ставки
+            stake_field.clear()
+            stake_field.send_keys(BET_MOUNT_RUB)
+            logging.info('Stake field found and bet amount entered')
+            time.sleep(1)
+
+            stake_accept_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, STAKE_ACCEPT_BUTTON_XPATH)))  # "принять" ставку
+            stake_accept_button.click()
+            logging.info('Accept button found and click')
+            time.sleep(5) # TODO время ожидания после совершения ставки
     except Exception as e:
-        logger.critical('-----НЕОБРАБАТЫВАЕМАЯ ОШИБКА-----')
-        logger.critical(e)
-        raise e
+        close_bk_message(driver_mar)
+        close_promo_message(driver_mar)
+        logging.critical(e)
+        time.sleep(7200)
+        driver_mar.close()  # TODO мб раскоментить? че делает эта строка
+        quit()
+        raise
+
+
+# def proc_start():
+#     p_to_start = Process(target=start_marathon_bot, name='start_marathon_bot', args=(QUEUE, ))
+#     p_to_start.start()
+#     return p_to_start
+
+
+# def proc_stop(p_to_stop):
+#     p_to_stop.terminate()
 
 
 def main():
-    try:
-        with open('config.json') as f:
-            config_dict = json.load(f)
-            logging.info('Config file open')
-    except FileNotFoundError as e:
-        # TODO следующие 3 строчки кода не работают
-        # ctypes.windll.user32.MessageBoxW(0,
-        #                                  'Файл config.json не найден. Положите файл туда куда надо и перезапустите бота',
-        #                                  "Warning", 1)
-        logging.critical('CONFIG FILE NOT FOUND')
-        logging.critical(e)
-        raise e
-
-    time.sleep(1)
-
-    for acc in config_dict['account']:
-        os.makedirs(acc['path'], exist_ok=True)
-        Process(target=start_worker_mar, args=(config_dict, acc['path'], acc['username'], acc['password'])).start()
+    Process(target=start_marathon_bot, name='start_marathon_bot', args=(QUEUE, )).start()
+    TELEGRAM_BOT.polling(none_stop=True, interval=0)
 
 
 if __name__ == "__main__": # хз зачем это, скопировал из прошлого проекта
     multiprocessing.freeze_support()
-
     try:
         main()
     except Exception as e:
         logging.critical(e)
-        a = str(input()) # TODO что делает эта строчка? херня какая-то
+        a = str(input())  # TODO что делает эта строчка? печатает в терминал ошибку?
+        time.sleep(7200)  # TODO delete
         raise e
-
-
-
-
-    # П1:               <ссылка>
-    # П2:               <ссылка>
-    # Азиатские форы:   <ссылка>
-    #                           АН1 от (-4.5 -5.0) до (+4.5 5.0)   <ссылки>
-    #                           АН1 от(-4.5 - 5.0) до(+4.5 5.0)    <ссылки>
-    # Тоталы        :   <ссылка>
-    #                               ТМ от 0.5 до 10     <ссылки>
-    #                               ТБ от 0 до 10       <ссылки>

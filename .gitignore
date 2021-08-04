@@ -2,3 +2,4 @@ build/
 workdir/
 dist/
 browser_profiles/
+page.html
