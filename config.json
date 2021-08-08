@@ -1,10 +1,11 @@
 {
-	"marathon_mirror" : "http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1",
-	"token" : "1922028724:AAE6sCrpRpYivmxirneOFlFk956u3V8ChSk",
-	"bot_id" : "1",
-	"path" : "/workdir/browser_profiles",
-	"username" : "6714278",
-	"password" : "Gup2702dims",
-	"bet_mount_rub" : 20,
-	"coeff_diff_percentage" : 10
+ "marathon_mirror": "http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1",
+ "token": "1922028724:AAE6sCrpRpYivmxirneOFlFk956u3V8ChSk",
+ "bot_id": "1",
+ "path": "/workdir/browser_profiles",
+ "username": "6714278",
+ "password": "Gup2702dims",
+ "bet_mount_rub": 20,
+ "coeff_diff_percentage": 10,
+ "first_try": false
 }
