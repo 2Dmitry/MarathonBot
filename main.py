@@ -122,7 +122,6 @@ def get_text_messages(message):
         TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' говорит: "Привет <3"')
     elif 0 < message.text.find(';'):
         put_in_queue(message.text)
-        logging.info('Put event in QUEUE')
         TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' получил событие')
     else:
         TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' вас не понимает')
@@ -364,11 +363,8 @@ def start_marathon_bot(QUEUE):
         while True:
             try:
                 if event != None:  # and event['id'] in BETS:
-                    if event['id'] == None:
-                        teams = event['team1'] + ' - ' + event['team2']
-                        EVENTS[teams] = event
-                    else:
-                        EVENTS[event['id']] = event
+                    teams = event['team1'] + ' - ' + event['team2']
+                    EVENTS[teams + ' - ' + event['date']] = event
                     with open('bets.json', 'w', encoding='utf-8') as f:
                         json.dump(EVENTS, f, indent=1, ensure_ascii=False)
                         logging.info('EVENTS saved')
@@ -386,6 +382,7 @@ def start_marathon_bot(QUEUE):
             else:
                 event = QUEUE.get()
                 logging.info('Get event from QUEUE')
+                logging.info(f'{event}')
                 event['status'] = EVENT_IN_PROGRESS_STATUS
 
             search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
@@ -404,6 +401,7 @@ def start_marathon_bot(QUEUE):
                 pass
 
             event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+            time.sleep(0.5)
             if event['sport'] == 'Футбол':  # TODO только ФУТБОЛ, добавить п1/п2 в теннисе
                 if event['type'][:2] == 'W1':  # победа команды 1
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, SOCCER_WINNER1_BUTTON_FPATH)))
@@ -504,16 +502,16 @@ def start_marathon_bot(QUEUE):
                     logging.info(f'Коэффициент купона обновился, когда уже был добавлен в купон')
                     coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
                     coupon_delete_all.click()
-                    time.sleep(0.33)
+                    time.sleep(0.5)
                     choice_element.click()
-                    time.sleep(0.33)
+                    time.sleep(0.5)
                     continue
                 except StaleElementReferenceException:  # TODO я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
                     logging.info(f'StaleElementReferenceException, хз что это за исключение и когда срабатывает\n {event} \n')
                     event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                     event['status'] = 'cant find coupon coeff'
-                    # time.sleep(1800)
-                    break
+                    time.sleep(0.5)
+                    continue
 
             if (event['coeff'] - 0.2) > coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
                 event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
@@ -551,9 +549,10 @@ def start_marathon_bot(QUEUE):
             # TODO здесь должна быть проверка на то, что ставка принята
 
             try:
-                stake_OK_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[26]/div/div/div[2]/button[1]')))  # закрываем уведомление о том, что нехватка средств на счете
+                stake_OK_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="ok-button"]')))  # закрываем уведомление о том, что нехватка средств на счете
                 stake_OK_button.click()
                 logging.info('close message')
+                time.sleep(3)
             except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
                 event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = 'CANT CLICK ACCEPT BUTTON'
