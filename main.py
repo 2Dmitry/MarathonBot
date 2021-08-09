@@ -45,6 +45,8 @@ CATEGORY_CLASS = 'category-label-link'
 ALL_MARKETS_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'
 SOCCER_WINNER1_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[3]'
 SOCCER_WINNER2_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[5]'
+TENNIS_WINNER1_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div[1]/div/div/div/div[2]/table/tbody/tr/td[3]'
+TENNIS_WINNER2_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div[1]/div/div/div/div[2]/table/tbody/tr/td[4]'
 
 os.makedirs('workdir/logs', exist_ok=True)  # создаем необходимые папки
 os.makedirs('workdir/bets', exist_ok=True)  # создаем необходимые папки
@@ -80,17 +82,51 @@ PATH = CONFIG_JSON['path']
 USERNAME = CONFIG_JSON['username']
 PASSWORD = CONFIG_JSON['password']
 BET_MOUNT_RUB = CONFIG_JSON['bet_mount_rub']
-COEFF_DIFF_PERCENTAGE = CONFIG_JSON['coeff_diff_percentage']
+FIRST_TRY = CONFIG_JSON['first_try']
+FREQ_UPDATE_SEC = CONFIG_JSON["freq_update_sec"]
+TIME_BEFORE_THE_START = CONFIG_JSON['time_before_the_start']
 
 QUEUE = Queue()
 EVENTS = {}
 
 
+def get_date_sec(text):                                     # 08-08-2021_09-11-54
+    text = text[text.find('-') + 1:]                        # 08-2021_09-11-54
+    text = text[text.find('-') + 1:]                        # 2021_09-11-54
+    text = text[text.find('_') + 1:]                        # 09-11-54
+    hours = text[:text.find('-')]                            # 09
+    text = text[text.find('-') + 1:]                        # 11-54
+    minutes = int(text[:text.find('-')]) * 60               # 11
+    seconds = int(text[text.find('-') + 1:])                # 54
+    if hours == '00' and minutes == 0 and seconds == 0:
+        return 0;
+    elif hours == '00':                                        # если событие начинается "завтра", то 00 часов это 24 часа
+        hours = '24'
+    hours = int(hours) * 3600
+    summ_seconds = hours + minutes + seconds
+    return summ_seconds
+
+
+def get_time_start(text):
+    hours = text[:text.find(':')]
+    if hours == '00':
+        hours = '24'
+    hours = int(hours)
+    text = text[text.find(':')+1:]
+    minutes = int(text)
+    summ_seconds = hours * 3600 + minutes * 60
+    return summ_seconds
+
+
 def put_in_queue(text):
     event = {}                                                          # 0123456789@0123456789@0123456789@0123456789@0123456789@0123456789@012
-    event['id'] = None
-    event['date'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
     event['status'] = EVENT_NEW_STATUS
+    event['id'] = None
+    event['date_added'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+    event['date_last_try'] = '00-00-0000_00-00-00'
+    event['time_event_start'] = '01:00'
+    event['processing_time'] = None
+    event['desc'] = None
     event['sport'] = text[:text.find(';')]                              # Футбол; League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
     text = text[text.find(';') + 2:]                                    # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
     event['league'] = text[text.find(':') + 2:text.find(';')]           # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
@@ -101,7 +137,6 @@ def put_in_queue(text):
     event['type'] = text[:text.find('=')]                               # O(1)=1.57;
     event['coeff'] = float(text[text.find('=') + 1:text.find(';')])     # O(1)=1.57;
     event['coupon_coeff'] = None
-    event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
     # print(f'Событие которое получил бот: \n{event}\n')  # TODO DELETE
     logging.info(f'Событие которое получил бот: \n{event}\n')
     QUEUE.put_nowait(event)
@@ -138,7 +173,7 @@ def login(driver_mar):
         wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
         logging.info('login: Exit button found: no need to login')
         logging.info('login: stop')
-        CONFIG_JSON['first_try'] = False
+        FIRST_TRY = False
         update_config_file()
         return
     except TimeoutException:
@@ -248,6 +283,14 @@ def search_event(driver_mar, event_name):
     logging.info('search_event: Search sports tab button found and click')
     time.sleep(0.66)
 
+    logging.info('search_event: stop')
+
+
+def show_more(driver_mar):
+    logging.info('show_more: start')
+    wait_3 = WebDriverWait(driver_mar, 3)
+    wait_5 = WebDriverWait(driver_mar, 5)
+
     event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
     event_more_button.click()
     logging.info('search_event: Event more button found and click')
@@ -257,8 +300,7 @@ def search_event(driver_mar, event_name):
     event_more_button.click()
     logging.info('search_event: Event all markets button found and click')
     time.sleep(1)
-
-    logging.info('search_event: stop')
+    logging.info('show_more: stop')
 
 
 def get_table_list(driver_mar, str):
@@ -267,12 +309,12 @@ def get_table_list(driver_mar, str):
         if table.get_attribute('class') == '':
             table_once = table.find_elements_by_class_name('market-table-name')
             if len(table_once) == 1:
+                if table_once[0].text != str:
+                    continue
                 if table_once[0].text == str:
-                    # print(table_once[0].text)  # TODO DELETE
                     for table_once_tr in table.find_elements_by_tag_name('tr'):
                         for table_once_tr_td in table_once_tr.find_elements_by_tag_name('td'):
                             table_lst.append(table_once_tr_td)
-                            # print(f'{table_once_tr_td.text};\n')  # TODO DELETE
                     break
     logging.info(f'get_table_list: получена необходимая таблица с кэфами и выборами')
     return table_lst
@@ -302,7 +344,7 @@ def collect_handicap_str(str, handicap_value):
             if handicap_value - 0.25 == 0:
                 str = f'(0,+{handicap_value + 0.25})'
             pass
-    if str == 'simple':  # обычная фора
+    elif str == 'simple':  # обычная фора
         if handicap_value == 0:
             str = '(0)'
         if handicap_value < 0:
@@ -314,10 +356,10 @@ def collect_handicap_str(str, handicap_value):
     return str
 
 
-def collect_total_str(total_value):
-    if total_value == 0:
-        str = f'(0)'
-    else:
+def collect_total_str(str, total_value):
+    if str == 'asia':
+        str = f'({total_value - 0.25},{total_value + 0.25})'
+    elif str == 'simple':  # тотала 0 не бывает, минимум 0.5 и только положительный
         str = f'({total_value})'
     logging.info(f'collect_total_str: сгенерирована строка, соответствующая тоталу: {str}')
     return str
@@ -358,13 +400,16 @@ def start_marathon_bot(QUEUE):
     close_bk_message(driver_mar)  # закрытие уведомления от букмекера
     close_promo_message(driver_mar)  # закрытие рекламного уведомления от букмекера
 
+    begin_time = None
     event = None
     try:
         while True:
             try:
-                if event != None:  # and event['id'] in BETS:
+                if event != None:
+                    if event['status'] == EVENT_BET_ACCEPTED_STATUS:
+                        event['processing_time'] = get_date_sec(event['date_last_try']) - begin_time
                     teams = event['team1'] + ' - ' + event['team2']
-                    EVENTS[teams + ' - ' + event['date']] = event
+                    EVENTS[teams + ' - ' + event['date_added']] = event
                     with open('bets.json', 'w', encoding='utf-8') as f:
                         json.dump(EVENTS, f, indent=1, ensure_ascii=False)
                         logging.info('EVENTS saved')
@@ -381,11 +426,26 @@ def start_marathon_bot(QUEUE):
                 continue
             else:
                 event = QUEUE.get()
+                begin_time = get_date_sec(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
+                diff_sec = begin_time - get_date_sec(event['date_last_try'])
+                diff_sec2 = begin_time - get_time_start(event['time_event_start'])
+                if diff_sec < FREQ_UPDATE_SEC and diff_sec2 < TIME_BEFORE_THE_START:  # события будут проверяться каждые полчаса и за 15 минут до начала события
+                    event['desc'] = 'insufficient time difference, pls wait'
+                    QUEUE.put_nowait(event)
+                    logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} or {diff_sec2}<{TIME_BEFORE_THE_START} = TRUE. Event dont get from QUEUE, put back')
+                    logging.info(f'{event}')
+                    time.sleep(1)
+                    continue
                 logging.info('Get event from QUEUE')
                 logging.info(f'{event}')
                 event['status'] = EVENT_IN_PROGRESS_STATUS
 
-            search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
+            if event['sport'] == 'Теннис':
+                search_event(driver_mar, event['team1'])  # поиск события
+            else:
+                search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
+
+            event['time_event_start'] = driver_mar.find_element(By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[1]/table/tbody/tr[1]/td[3]').text
 
             try:
                 event['id'] = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
@@ -400,83 +460,85 @@ def start_marathon_bot(QUEUE):
             except TimeoutException:
                 pass
 
-            event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+            event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
             time.sleep(0.5)
-            if event['sport'] == 'Футбол':  # TODO только ФУТБОЛ, добавить п1/п2 в теннисе
+            if event['sport'] == 'Теннис':
+                if event['type'][:2] == 'W1':  # победа команды 1
+                    choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, TENNIS_WINNER1_BUTTON_FPATH)))
+                    choice_element.click()
+                elif event['type'][:2] == 'W2':  # победа команды 2
+                    choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, TENNIS_WINNER2_BUTTON_FPATH)))
+                    choice_element.click()
+            elif event['sport'] == 'Футбол':
                 if event['type'][:2] == 'W1':  # победа команды 1
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, SOCCER_WINNER1_BUTTON_FPATH)))
                     choice_element.click()
-                    # print('победа команды 1')  # TODO DELETE
                 elif event['type'][:2] == '1X' or event['type'][:2] == 'X1':  # 1X победа команды 1 или ничья
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[6]')))
                     choice_element.click()
-                    # print('победа команды 1 или ничья')  # TODO DELETE
                 elif event['type'][:2] == 'W2':  # победа команды 2
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, SOCCER_WINNER2_BUTTON_FPATH)))
                     choice_element.click()
-                    # print('победа команды 2')  # TODO DELETE
                 elif event['type'][:2] == '2X' or event['type'][:2] == 'X2':  # X2 победа команды 2 или ничья
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[8]')))
                     choice_element.click()
-                    # print('победа команды 2 или ничья')  # TODO DELETE
                 elif event['type'][0] == 'O' or event['type'][0] == 'U':  # тотал
-                    table_list = get_table_list(driver_mar, 'Тотал голов')
+                    show_more(driver_mar)
                     total_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
-                    total_str = collect_total_str(total_value)
+                    total_asia = False
+                    if total_value * 100 % 50 != 0:
+                        total_asia = True
+                    if total_asia:
+                        total_str = collect_total_str('asia', total_value)
+                        table_list = get_table_list(driver_mar, 'Азиатский тотал голов')
+                    else:
+                        total_str = collect_total_str('simple', total_value)
+                        table_list = get_table_list(driver_mar, 'Тотал голов')
                     if event['type'][0] == 'U':  # тотал меньше
                         choice_list = sort_table_list(table_list, 1)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
-                            # print(f'{choice_element.text};')  # TODO DELETE
                             if choice_element.text.find(total_str) != -1:
                                 choice_element.click()
-                        # print('тотал меньше')
                     elif event['type'][0] == 'O':  # тотал больше
                         choice_list = sort_table_list(table_list, 2)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
-                            # print(f'{choice_element.text};')  # TODO DELETE
                             if choice_element.text.find(total_str) != -1:
                                 choice_element.click()
-                        # print(f'тотал больше')  # TODO DELETE
                 elif event['type'][:2] == 'AH':  # азиатская фора или просто фора
+                    show_more(driver_mar)
                     handicap_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
                     handicap_asia = False
                     if handicap_value * 100 % 50 != 0:
                         handicap_asia = True
                     if handicap_asia:
                         handicap_str = collect_handicap_str('asia', handicap_value)
-                        # print(f'handicap_str: {handicap_str}')  # TODO DELETE
                         table_list = get_table_list(driver_mar, 'Победа с учетом азиатской форы')
                     else:
                         handicap_str = collect_handicap_str('simple', handicap_value)
-                        # print(f'handicap_str: {handicap_str}')  # TODO DELETE
                         table_list = get_table_list(driver_mar, 'Победа с учетом форы')
                     if event['type'][2] == '1':  # азиатская фора или просто фора на 1ю команду
                         choice_list = sort_table_list(table_list, 1)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
-                            # print(f'{choice_element.text};')  # TODO DELETE
                             if choice_element.text.find(handicap_str) != -1:
                                 choice_element.click()
-                        # print('азиатская фора или просто фора команда 1')  # TODO DELETE
                     elif event['type'][2] == '2':  # азиатская фора или просто фора на 2ю команду
                         choice_list = sort_table_list(table_list, 2)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
-                            # print(f'{choice_element.text};')  # TODO DELETE
                             if choice_element.text.find(handicap_str) != -1:
                                 choice_element.click()
-                        # print('азиатская фора или просто фора команда 2')  # TODO DELETE
                 else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
                     logging.info(f'EVENT TYPE IS NOT DEFINED \n{event}\n')
                     # TODO писать сообщение в конфу, что тип события не определен
-                    event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                    event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                     event['status'] = EVENT_TYPE_NOT_DEF_STATUS
                     continue
             else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
                 logging.info(f'EVENT SPORT IS NOT DEFINED\n {event} \n')
-                event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = EVENT_SPORT_NOT_DEF_STATUS
                 continue
 
@@ -485,7 +547,7 @@ def start_marathon_bot(QUEUE):
             except TimeoutException:  # нужный исход не найден и поэтому событие добавляется в конец очереди
                 logging.info(f'Нужный исход не найден')
                 logging.info('Put event in QUEUE')
-                event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = EVENT_WAIT_MARKET_NOT_FOUND_STATUS
                 QUEUE.put_nowait(event)
                 continue
@@ -495,8 +557,8 @@ def start_marathon_bot(QUEUE):
                 try:
                     coupon_coeff = float(coeff_element.text[coeff_element.text.find(':') + 2:])
                     event['coupon_coeff'] = coupon_coeff
-                    event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-                    event['status'] = 'find coupon coeff'
+                    event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                    event['status'] = 'found coupon coeff'
                     break
                 except ValueError:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
                     logging.info(f'Коэффициент купона обновился, когда уже был добавлен в купон')
@@ -508,13 +570,13 @@ def start_marathon_bot(QUEUE):
                     continue
                 except StaleElementReferenceException:  # TODO я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
                     logging.info(f'StaleElementReferenceException, хз что это за исключение и когда срабатывает\n {event} \n')
-                    event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-                    event['status'] = 'cant find coupon coeff'
+                    event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                    event['status'] = 'cant found coupon coeff'
                     time.sleep(0.5)
                     continue
 
             if (event['coeff'] - 0.2) > coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
-                event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = EVENT_COUPONCOEFF_NOT_GOOD_STATUS
                 QUEUE.put_nowait(event)
                 logging.info(f"NOT TRY COEFF -> coupon_coeff: {coupon_coeff} VS event_coeff: {event['coeff']}")
@@ -531,7 +593,7 @@ def start_marathon_bot(QUEUE):
                 logging.info('Stake field found and bet amount entered')
                 time.sleep(0.5)
             except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = 'CANT PRINT BET MOUNT IN STAKE FIELD'
                 logging.info('CANT PRINT BET MOUNT IN STAKE FIELD')
                 continue
@@ -541,28 +603,28 @@ def start_marathon_bot(QUEUE):
                 stake_accept_button.click()
                 logging.info('Accept button found and click')
             except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = 'CANT CLICK ACCEPT BUTTON'
                 logging.info('CANT CLICK ACCEPT BUTTON')
                 continue
 
             # TODO здесь должна быть проверка на то, что ставка принята
 
-            try:
+            try:  # TODO DELETE
                 stake_OK_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="ok-button"]')))  # закрываем уведомление о том, что нехватка средств на счете
                 stake_OK_button.click()
                 logging.info('close message')
-                time.sleep(3)
+                time.sleep(1)
             except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = 'CANT CLICK ACCEPT BUTTON'
                 logging.info('CANT CLICK ACCEPT BUTTON')
                 continue
 
-            event['last_try_time'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+            event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
             event['status'] = EVENT_BET_ACCEPTED_STATUS
             logging.info('Bet accepted')
-            time.sleep(5) # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
+            time.sleep(1) # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
     except Exception as e:
         logging.exception(e)
         driver_mar.close()  # TODO че делает эта строка?

@@ -6,6 +6,7 @@
  "username": "6714278",
  "password": "Gup2702dims",
  "bet_mount_rub": 20,
- "coeff_diff_percentage": 10,
- "first_try": false
+ "first_try": false,
+ "freq_update_sec": 1800,
+ "time_before_the_start": 900
 }
