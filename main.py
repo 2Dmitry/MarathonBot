@@ -137,7 +137,6 @@ def put_in_queue(text):
     event['type'] = text[:text.find('=')]                               # O(1)=1.57;
     event['coeff'] = float(text[text.find('=') + 1:text.find(';')])     # O(1)=1.57;
     event['coupon_coeff'] = None
-    # print(f'Событие которое получил бот: \n{event}\n')  # TODO DELETE
     logging.info(f'Событие которое получил бот: \n{event}\n')
     QUEUE.put_nowait(event)
     logging.info('Put event in QUEUE')
@@ -177,7 +176,12 @@ def login(driver_mar):
         update_config_file()
         return
     except TimeoutException:
-        username_field = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, USERNAME_FIELD_CLASS)))
+        try:
+            username_field = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, USERNAME_FIELD_CLASS)))
+        except TimeoutException as e:
+            logging('WE WERE BLOCK')
+            logging(e)
+            raise e
         username_field.clear()
         username_field.send_keys(USERNAME)
         logging.info('login: Username entered')
@@ -259,29 +263,29 @@ def search_event(driver_mar, event_name):
         # time.sleep(7200)
         return
     logging.info('search_event: Search icon button found and click')
-    time.sleep(1)
+    time.sleep(2.5)
 
     search_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, SEARCH_FIELD_CLASS)))
     search_field.clear()
     search_field.send_keys(event_name)
     logging.info('search_event: Search field found and click, event_name enter')
-    time.sleep(1)
+    time.sleep(2.5)
 
     search_enter_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ENTER_BUTTON_XPATH)))
     search_enter_button.click()
     logging.info('search_event: Search enter button found and click')
-    time.sleep(1)
+    time.sleep(2.5)
 
     try:
-        search_sport_tab_button = wait_3.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
-    except TimeoutException as e:
+        search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
+    except TimeoutException:
         logging.info('search_event: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
         # TODO ну тут надо сделать уведомление, что ниче не найдено
         logging.info('search_event: stop')
         return
     search_sport_tab_button.click()
     logging.info('search_event: Search sports tab button found and click')
-    time.sleep(0.66)
+    time.sleep(1.5)
 
     logging.info('search_event: stop')
 
@@ -294,7 +298,7 @@ def show_more(driver_mar):
     event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
     event_more_button.click()
     logging.info('search_event: Event more button found and click')
-    time.sleep(0.66)
+    time.sleep(2)
 
     event_more_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, ALL_MARKETS_BUTTON_FPATH)))
     event_more_button.click()
@@ -424,27 +428,32 @@ def start_marathon_bot(QUEUE):
             if QUEUE.empty():
                 # TODO добавить каждые 30 минут клики в "пустоту"
                 logging.info('QUEUE is empty')
-                time.sleep(1)
+                time.sleep(2)
                 continue
             else:
                 event = QUEUE.get()
                 datenow = get_date_sec(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
+                logging.info(f'{get_date_sec(event["date_last_try"])} = {event["date_last_try"]}')
                 diff_sec = datenow - get_date_sec(event['date_last_try'])
-                diff_sec2 = abs(datenow - get_time_start(event['time_event_start']))
-                if (diff_sec < FREQ_UPDATE_SEC) or (diff_sec2 > TIME_BEFORE_THE_START):     # событие будет возвращено в очередь,
-                                                                                            # так как полчаса еще не прошло с момента последней попытки или
-                                                                                            # времени до начала события больше чем 15 минут
-                    event['desc'] = 'insufficient time difference, pls wait'
-                    QUEUE.put_nowait(event)
-                    logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} or {diff_sec2}>{TIME_BEFORE_THE_START} = TRUE. Event put back')
-                    logging.info(f'{event}')
-                    time.sleep(1)
-                    continue
-                if diff_sec2 < TIME_BEFORE_THE_START and N == 0:
-                    N += 1
-                    pass
-                else:
-                    continue
+                diff_sec2 = get_time_start(event['time_event_start']) - datenow
+
+                logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} or {diff_sec2}>{TIME_BEFORE_THE_START} ???')
+
+                if event['date_last_try'] != '00-00-0000_00-00-00':
+                    if (diff_sec < FREQ_UPDATE_SEC) or (diff_sec2 > TIME_BEFORE_THE_START):     # событие будет возвращено в очередь,
+                                                                                                # так как полчаса еще не прошло с момента последней попытки ИЛИ
+                                                                                                # времени до начала события больше чем 15 минут
+                        event['desc'] = 'insufficient time difference, pls wait'
+                        QUEUE.put_nowait(event)
+                        logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} or {diff_sec2}>{TIME_BEFORE_THE_START} = TRUE. Event put back')
+                        logging.info(f'{event}')
+                        continue
+                    if diff_sec2 < TIME_BEFORE_THE_START and N == 0:
+                        N += 1
+                        logging.info(f'Событие начнется менее через 15 минут, нужно проверить кэф')
+                        pass
+                    else:
+                        continue
                 logging.info('Get event from QUEUE')
                 logging.info(f'{event}')
                 event['status'] = EVENT_IN_PROGRESS_STATUS
@@ -467,6 +476,7 @@ def start_marathon_bot(QUEUE):
             try:
                 event['id'] = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException:  # если событие не найдено через строку поиска, то перейти к следующему
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = EVENT_NOT_FOUND_STATUS
                 continue
             event['id'] = event['id'][event['id'].find('+-+') + 3:]
@@ -478,7 +488,7 @@ def start_marathon_bot(QUEUE):
                 pass
 
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            time.sleep(0.5)
+            time.sleep(1.5)
             if event['sport'] == 'Теннис':
                 if event['type'][:2] == 'W1':  # победа команды 1
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, TENNIS_WINNER1_BUTTON_FPATH)))
@@ -581,7 +591,7 @@ def start_marathon_bot(QUEUE):
                     logging.info(f'Коэффициент купона обновился, когда уже был добавлен в купон')
                     coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
                     coupon_delete_all.click()
-                    time.sleep(0.5)
+                    time.sleep(1)
                     QUEUE.put_nowait(event)
                     logging.info('Put event in QUEUE')
                     break
@@ -589,7 +599,7 @@ def start_marathon_bot(QUEUE):
                     logging.info(f'StaleElementReferenceException, хз что это за исключение и когда срабатывает\n {event} \n')
                     event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                     event['status'] = 'cant found coupon coeff'
-                    time.sleep(0.5)
+                    time.sleep(1)
                     QUEUE.put_nowait(event)
                     logging.info('Put event in QUEUE')
                     break
@@ -610,7 +620,7 @@ def start_marathon_bot(QUEUE):
                 stake_field.clear()
                 stake_field.send_keys(BET_MOUNT_RUB)
                 logging.info('Stake field found and bet amount entered')
-                time.sleep(0.5)
+                time.sleep(1)
             except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = 'CANT PRINT BET MOUNT IN STAKE FIELD'
@@ -633,7 +643,7 @@ def start_marathon_bot(QUEUE):
                 stake_OK_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="ok-button"]')))  # закрываем уведомление о том, что нехватка средств на счете
                 stake_OK_button.click()
                 logging.info('close message')
-                time.sleep(1)
+                time.sleep(2)
             except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = 'CANT CLICK ACCEPT BUTTON'
@@ -643,7 +653,7 @@ def start_marathon_bot(QUEUE):
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
             event['status'] = EVENT_BET_ACCEPTED_STATUS
             logging.info('Bet accepted')
-            time.sleep(1) # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
+            time.sleep(5) # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
         except:
             QUEUE.put_nowait(event)
             logging.info('Необрабатываемое исключение')
