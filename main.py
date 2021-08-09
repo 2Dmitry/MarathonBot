@@ -154,12 +154,12 @@ def get_text_messages(message):
     if message.text == 'bot id':
         TELEGRAM_BOT.send_message(message.from_user.id, BOT_ID)
     elif message.text == ('bot' + BOT_ID + ' привет'):
-        TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' говорит: "Привет <3"')
-    elif 0 < message.text.find(';'):
+        TELEGRAM_BOT.send_message(message.chat.id, 'bot' + BOT_ID + ' говорит: "Привет <3"')
+    elif 0 < message.text.find(';'):  # если пришло именно событие в сообщении, значит после вида спорта будет стоять ";", положение которой не первое
         put_in_queue(message.text)
-        TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' получил событие')
+        TELEGRAM_BOT.send_message(message.chat.id, 'bot' + BOT_ID + ' получил событие')
     else:
-        TELEGRAM_BOT.send_message(message.from_user.id, 'bot' + BOT_ID + ' вас не понимает')
+        TELEGRAM_BOT.send_message(message.chat.id, 'bot' + BOT_ID + ' вас не понимает')
 
 
 def login(driver_mar):
@@ -400,14 +400,16 @@ def start_marathon_bot(QUEUE):
     close_bk_message(driver_mar)  # закрытие уведомления от букмекера
     close_promo_message(driver_mar)  # закрытие рекламного уведомления от букмекера
 
-    begin_time = None
+    N = 0
+    datenow = None
     event = None
-    try:
-        while True:
+
+    while True:
+        try:
             try:
                 if event != None:
                     if event['status'] == EVENT_BET_ACCEPTED_STATUS:
-                        event['processing_time'] = get_date_sec(event['date_last_try']) - begin_time
+                        event['processing_time'] = get_date_sec(event['date_last_try']) - datenow
                     teams = event['team1'] + ' - ' + event['team2']
                     EVENTS[teams + ' - ' + event['date_added']] = event
                     with open('bets.json', 'w', encoding='utf-8') as f:
@@ -426,15 +428,22 @@ def start_marathon_bot(QUEUE):
                 continue
             else:
                 event = QUEUE.get()
-                begin_time = get_date_sec(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
-                diff_sec = begin_time - get_date_sec(event['date_last_try'])
-                diff_sec2 = begin_time - get_time_start(event['time_event_start'])
-                if diff_sec < FREQ_UPDATE_SEC and diff_sec2 < TIME_BEFORE_THE_START:  # события будут проверяться каждые полчаса и за 15 минут до начала события
+                datenow = get_date_sec(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
+                diff_sec = datenow - get_date_sec(event['date_last_try'])
+                diff_sec2 = abs(datenow - get_time_start(event['time_event_start']))
+                if (diff_sec < FREQ_UPDATE_SEC) or (diff_sec2 > TIME_BEFORE_THE_START):     # событие будет возвращено в очередь,
+                                                                                            # так как полчаса еще не прошло с момента последней попытки или
+                                                                                            # времени до начала события больше чем 15 минут
                     event['desc'] = 'insufficient time difference, pls wait'
                     QUEUE.put_nowait(event)
-                    logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} or {diff_sec2}<{TIME_BEFORE_THE_START} = TRUE. Event dont get from QUEUE, put back')
+                    logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} or {diff_sec2}>{TIME_BEFORE_THE_START} = TRUE. Event put back')
                     logging.info(f'{event}')
                     time.sleep(1)
+                    continue
+                if diff_sec2 < TIME_BEFORE_THE_START and N == 0:
+                    N += 1
+                    pass
+                else:
                     continue
                 logging.info('Get event from QUEUE')
                 logging.info(f'{event}')
@@ -445,7 +454,15 @@ def start_marathon_bot(QUEUE):
             else:
                 search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
 
-            event['time_event_start'] = driver_mar.find_element(By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[1]/table/tbody/tr[1]/td[3]').text
+            try:
+                event['time_event_start'] = driver_mar.find_element(By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[1]/table/tbody/tr[1]/td[3]').text
+            except TimeoutException:  # нужный исход не найден и поэтому событие добавляется в конец очереди
+                logging.info(f'Событие не найдено во вкладке "Спорт"')
+                logging.info('Put event in QUEUE')
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['status'] = EVENT_NOT_FOUND_STATUS
+                QUEUE.put_nowait(event)
+                continue
 
             try:
                 event['id'] = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
@@ -565,15 +582,17 @@ def start_marathon_bot(QUEUE):
                     coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
                     coupon_delete_all.click()
                     time.sleep(0.5)
-                    choice_element.click()
-                    time.sleep(0.5)
-                    continue
+                    QUEUE.put_nowait(event)
+                    logging.info('Put event in QUEUE')
+                    break
                 except StaleElementReferenceException:  # TODO я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
                     logging.info(f'StaleElementReferenceException, хз что это за исключение и когда срабатывает\n {event} \n')
                     event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                     event['status'] = 'cant found coupon coeff'
                     time.sleep(0.5)
-                    continue
+                    QUEUE.put_nowait(event)
+                    logging.info('Put event in QUEUE')
+                    break
 
             if (event['coeff'] - 0.2) > coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
@@ -625,11 +644,13 @@ def start_marathon_bot(QUEUE):
             event['status'] = EVENT_BET_ACCEPTED_STATUS
             logging.info('Bet accepted')
             time.sleep(1) # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
-    except Exception as e:
-        logging.exception(e)
-        driver_mar.close()  # TODO че делает эта строка?
-        quit()
-        raise e
+        except:
+            QUEUE.put_nowait(event)
+            logging.info('Необрабатываемое исключение')
+            # time.sleep(900)
+            # driver_mar.close()
+            # quit()
+            continue
 
 
 # def proc_start():
