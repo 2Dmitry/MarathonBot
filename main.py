@@ -16,18 +16,26 @@ import telebot  # Подключаем Telegram API
 from telebot import types  # Подключаем библиотеку для создания кнопок
 
 
-# EVENT STATUS
-EVENT_NEW_STATUS = 'new'
-EVENT_IN_PROGRESS_STATUS = 'in progress'
-EVENT_NOT_FOUND_STATUS = 'event not found'
-EVENT_TYPE_NOT_DEF_STATUS = "event's type not defined"
-EVENT_SPORT_NOT_DEF_STATUS = "event's sport not defined"
-EVENT_WAIT_MARKET_NOT_FOUND_STATUS = 'wait: market not found'
-EVENT_COUPONCOEFF_NOT_GOOD_STATUS = 'coupon coeff isnot good'
-EVENT_BET_ACCEPTED_STATUS = 'bet accepted'
+#==============================<Глобальные переменные>==============================
+ENCODING = 'utf-8'
+QUEUE = Queue()
+EVENTS = {}
+#==============================</Глобальные переменные>=============================
 
 
-# кнопки и поля, которые есть в бк MarathonBet
+#==============================<Event status>=======================================
+STATUS_NEW = 'NEW'
+STATUS_IN_PROGRESS = 'In progress'
+STATUS_NO_SEARCH_RESULTS = 'No search results'
+STATUS_TYPE_NOT_DEFINED = "Event's type not defined"
+STATUS_SPORT_NOT_DEFINED = "Event's sport not defined"
+STATUS_MARKET_NOT_FOUND = 'Market not found'
+STATUS_NOT_TRY_COUPON_COEFF = 'Not try coupon coeff'
+STATUS_BET_ACCEPTED = 'Bet accepted'
+#==============================</Event status>======================================
+
+
+#==================<Кнопки и поля, которые есть в бк MarathonBet>===================
 EXIT_BUTTON_CLASS = 'marathon_icons-exit_icon'
 USERNAME_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__input'
 PASSWORD_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__password'
@@ -47,10 +55,19 @@ SOCCER_WINNER1_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[
 SOCCER_WINNER2_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[5]'
 TENNIS_WINNER1_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div[1]/div/div/div/div[2]/table/tbody/tr/td[3]'
 TENNIS_WINNER2_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div[1]/div/div/div/div[2]/table/tbody/tr/td[4]'
+# TODO добавить кнопки, которые встречаются по коду, в глобальные переменные
+#==================</Кнопки и поля, которые есть в бк MarathonBet>=================
+
+
+def move_bets_history():
+    try:  # перемещаем историю сделанных ставок из корня проекта в соответсвующую папку
+        shutil.move('bets.json', 'workdir/bets/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
+    except FileNotFoundError:
+        pass
+
 
 os.makedirs('workdir/logs', exist_ok=True)  # создаем необходимые папки
 os.makedirs('workdir/bets', exist_ok=True)  # создаем необходимые папки
-os.makedirs('workdir/history', exist_ok=True)  # создаем необходимые папки
 logging.basicConfig(filename="workdir/logs/{}.log".format(datetime.now().strftime('%d-%m-%Y_%H-%M-%S')),
                     format=u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s',
                     level=logging.DEBUG)
@@ -58,23 +75,18 @@ logging.basicConfig(filename="workdir/logs/{}.log".format(datetime.now().strftim
 logging.getLogger('selenium.webdriver.remote.remote_connection').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.debug('Start')
-try:  # перемещаем историю сделанных ставок из корня проекта в соответсвующую папку
-    shutil.move('bets.json', 'workdir/bets/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
-except FileNotFoundError:
-    pass
-
+move_bets_history()
 try:  # читаем конфиг файл
-    with open('config.json') as f:
+    with open('config.json', encoding=ENCODING) as f:
         CONFIG_JSON = json.load(f)
         logging.info('Config file open')
 except FileNotFoundError as e:
-    logging.exception('CONFIG FILE NOT FOUND')
+    logging.exception('Config file not found')
     logging.exception(e)
     raise e
 
 
-# TODO зеркало марафона меняется со временем, надо сделать обновление зеркала,
-#       актуальаня инфа есть в Телеграме в бот-канале  "Зеркала букмекеров BK-INFO"
+#==================<Настройки>=====================================================
 # TODO сделать обновление конфиг файла из телеграм канала
 MARATHON_MIRROR = CONFIG_JSON['marathon_mirror']
 TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])
@@ -86,10 +98,7 @@ BET_MOUNT_RUB = CONFIG_JSON['bet_mount_rub']
 FIRST_TRY = CONFIG_JSON['first_try']
 FREQ_UPDATE_SEC = CONFIG_JSON["freq_update_sec"]
 TIME_BEFORE_THE_START = CONFIG_JSON['time_before_the_start']
-
-QUEUE = Queue()
-EVENTS = {}
-
+#==================</Настройки>=====================================================
 
 def get_date_sec(text):                                     # 08-08-2021_09-11-54
     text = text[text.find('-') + 1:]                        # 08-2021_09-11-54
@@ -109,6 +118,10 @@ def get_date_sec(text):                                     # 08-08-2021_09-11-5
 
 
 def get_time_start(text):
+    if ' ' in text:  # если дата это строка такого рода: "1 авг 02:00"
+        text = text[text.find(' ') + 1:]  # "авг 02:00"
+        text = text[text.find(' ') + 1:]  # "02:00"
+        return 24 * 3600  # типа событие в 24:00 текущего дня начинается
     hours = text[:text.find(':')]
     if hours == '00':
         hours = '24'
@@ -125,7 +138,7 @@ def put_in_queue(text):
     elif text.find('Теннис') != -1:
         text = text[text.find('Теннис'):]
     event = {}                                                          # 0123456789@0123456789@0123456789@0123456789@0123456789@0123456789@012
-    event['status'] = EVENT_NEW_STATUS
+    event['status'] = STATUS_NEW
     event['id'] = None
     event['date_added'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
     event['date_last_try'] = '00-00-0000_00-00-00'
@@ -148,7 +161,7 @@ def put_in_queue(text):
 
 
 def update_config_file():
-    with open('config.json', 'w') as f:
+    with open('config.json', 'w', encoding=ENCODING) as f:
         json.dump(CONFIG_JSON, f, indent=1)
         logging.info('Config file saved')
 
@@ -157,14 +170,15 @@ def update_config_file():
 def get_text_messages(message):
     if message.text == 'bot id':
         TELEGRAM_BOT.send_message(message.from_user.id, BOT_ID)
-    elif message.text == ('bot' + BOT_ID + ' привет'):
-        TELEGRAM_BOT.send_message(message.chat.id, 'bot' + BOT_ID + ' говорит: "Привет <3"')
+    elif message.text == (f'bot{BOT_ID} привет'):
+        TELEGRAM_BOT.send_message(message.chat.id, f'bot{BOT_ID} говорит: "Привет <3"')
     elif ';' in message.text:  # если пришло именно событие в сообщении, значит после вида спорта должна обязательно стоять ";"
         put_in_queue(message.text)
-        # print(message.text) # TODO DELETE
-        TELEGRAM_BOT.send_message(message.chat.id, 'bot' + BOT_ID + ' получил событие')
+        TELEGRAM_BOT.send_message(message.chat.id, f'bot{BOT_ID} получил событие')
+    elif message.text == 'stop':
+        move_bets_history()
     else:
-        TELEGRAM_BOT.send_message(message.chat.id, 'bot' + BOT_ID + ' вас не понимает')
+        TELEGRAM_BOT.send_message(message.chat.id, f'bot{BOT_ID} вас не понимает')
 
 
 def login(driver_mar):
@@ -185,7 +199,6 @@ def login(driver_mar):
         try:
             username_field = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, USERNAME_FIELD_CLASS)))
         except TimeoutException as e:
-            logging('WE WERE BLOCK')
             logging(e)
             raise e
         username_field.clear()
@@ -422,19 +435,19 @@ def start_marathon_bot(QUEUE):
         #try:
         try:
             if event != None:
-                if event['status'] == EVENT_BET_ACCEPTED_STATUS:
+                if event['status'] == STATUS_BET_ACCEPTED:
                     event['processing_time'] = get_date_sec(event['date_last_try']) - datenow
                 teams = event['team1'] + ' - ' + event['team2']
                 EVENTS[teams + ' - ' + event['date_added']] = event
-                with open('bets.json', 'w', encoding='utf-8') as f:
+                with open('bets.json', 'w', encoding=ENCODING) as f:
                     json.dump(EVENTS, f, indent=1, ensure_ascii=False)
-                    logging.info('EVENTS saved')
+                    logging.info('bets.json updated')
                 event = None
             logging.info('event is None')
-        except ValueError:
+        except ValueError as e:  # хз зачем это исключение, вроде оно никогда не сработает
             logging.info('Event isnot in list, dont need save')
+            logging.info(str(e))
             pass
-        # TODO реализовать обновление информации о событиях, на которые не было сразу проставлено в течение дня
         if QUEUE.empty():
             # TODO добавить каждые 30 минут клики в "пустоту"
             logging.info('QUEUE is empty')
@@ -442,7 +455,7 @@ def start_marathon_bot(QUEUE):
             continue
         else:
             event = QUEUE.get()
-            logging.info(f'Get event \n {event} \nfrom QUEUE')
+            logging.info(f'Get event {event["date_added"]} from QUEUE')
             datenow = get_date_sec(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
             diff_sec = datenow - get_date_sec(event['date_last_try'])
             diff_sec2 = get_time_start(event['time_event_start']) - datenow
@@ -453,55 +466,60 @@ def start_marathon_bot(QUEUE):
                                                                                             # времени до начала события больше чем 15 минут
                     event['desc'] = 'insufficient time difference, pls wait'
                     QUEUE.put_nowait(event)
-                    logging.info('{diff_sec}<{FREQ_UPDATE_SEC} and {diff_sec2}>{TIME_BEFORE_THE_START} = TRUE. Event put back')
+                    logging.info(f'{diff_sec}<{FREQ_UPDATE_SEC} and {diff_sec2}>{TIME_BEFORE_THE_START} = TRUE. Event put back')
                     time.sleep(2)
                     continue
                 if diff_sec > FREQ_UPDATE_SEC:
                     event['desc'] = 'Event coeff will be updated'
                     logging.info('Event coeff will be updated')
-                    pass
                 if diff_sec2 < TIME_BEFORE_THE_START and N == 0:
                     N += 1
                     event['desc'] = 'Event soon started'
                     logging.info('Event soon started')
-                    pass
-            event['status'] = EVENT_IN_PROGRESS_STATUS
+                elif datenow > get_time_start(event['time_event_start']):
+                    event['status'] = 'No bet'
+                    event['desc'] = 'Event has already begun'
+                    logging.info('No bet. Event has already begun')
+                    continue
+            event['status'] = STATUS_IN_PROGRESS
 
-
-        if event['sport'] == 'Теннис':
+        if event['sport'] == 'Теннис':  # найти собыйтие через поисковую строку, переключиться на вкладку "Спорт"
             search_event(driver_mar, event['team1'])  # поиск события
         elif event['sport'] == 'Футбол':
             search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
-        else:  # событие не надо обратно класть в очередь, оно уже было удалено из очереди, надо просто записать его в историю ставок
-            logging.info('EVENT SPORT IS NOT DEFINED')
+        else:   # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
+                # надо просто изменить значение его полей и при заходе на новый цикл информация в файле bets будет обновлена
+            logging.info('Event sport not defined')
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = EVENT_SPORT_NOT_DEF_STATUS
+            event['status'] = STATUS_SPORT_NOT_DEFINED
             continue
 
-        # '/html/body/div[11]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[1]/table/tbody/tr[1]/td[3]'
-        # '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[1]/table/tbody/tr[1]/td[3]
-        try:
+        try:  # найти время начала события
             event['time_event_start'] = driver_mar.find_element(By.CLASS_NAME, 'date.date-short').text
-        except TimeoutException:  # нужный исход не найден и поэтому событие добавляется в конец очереди
-            logging.info('Event not found on "Sport" TAB')
-            logging.info('Put event in QUEUE')
+        except TimeoutException as e:  # время начала события
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = EVENT_NOT_FOUND_STATUS
+            event['status'] = STATUS_NO_SEARCH_RESULTS
             QUEUE.put_nowait(event)
+            logging.info('Put event in QUEUE')
+            logging.info('Event time start not found on "Sport" TAB')
+            logging.info(str(e))
             continue
 
-        try:
-            event['id'] = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
-        except NoSuchElementException:  # если событие не найдено через строку поиска, то перейти к следующему
+        try:  # найти айди события
+            id = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
+        except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = EVENT_NOT_FOUND_STATUS
+            event['status'] = STATUS_NO_SEARCH_RESULTS
+            logging.info('Event not found on "Sport" TAB')
+            logging.info(str(e))
             continue
-        event['id'] = event['id'][event['id'].find('+-+') + 3:]
+        event['id'] = id[id.find('+-+') + 3:]
 
-        try:  # если в купоне есть событие(-ия), то купон будет очищен
+        try:  # если в купоне есть событие(-ия), то купон будет очищен (теоретически в купоне не может быть больше чем 1 маркет)
             coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
             coupon_delete_all.click()
-        except TimeoutException:
+        except TimeoutException as e:
+            logging.info(str(e))
             pass
 
         event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
@@ -575,20 +593,21 @@ def start_marathon_bot(QUEUE):
                         if choice_element.text.find(handicap_str) != -1:
                             choice_element.click()
             else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                logging.info('EVENT TYPE IS NOT DEFINED')
+                logging.info('Event type not defined')
                 # TODO писать сообщение в конфу, что тип события не определен
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-                event['status'] = EVENT_TYPE_NOT_DEF_STATUS
+                event['status'] = STATUS_TYPE_NOT_DEFINED
                 continue
 
         try:
             coeff_element = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # ищем значение коэф-та в купоне TODO не работает с двумя и более выборами в одном купоне
-        except TimeoutException:  # нужный исход не найден и поэтому событие добавляется в конец очереди
-            logging.info('Market not found')
-            logging.info('Put event in QUEUE')
+        except TimeoutException as e:  # нужный исход не найден и поэтому событие добавляется в конец очереди
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = EVENT_WAIT_MARKET_NOT_FOUND_STATUS
+            event['status'] = STATUS_MARKET_NOT_FOUND
             QUEUE.put_nowait(event)
+            logging.info('Put event in QUEUE')
+            logging.info('Market not found')
+            logging.info(str(e))
             continue
         time.sleep(1)
 
@@ -597,30 +616,34 @@ def start_marathon_bot(QUEUE):
                 coupon_coeff = float(coeff_element.text[coeff_element.text.find(':') + 2:])
                 event['coupon_coeff'] = coupon_coeff
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-                event['status'] = 'found coupon coeff'
+                event['status'] = 'Found coupon coeff'
                 break
-            except ValueError:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
-                logging.info('Coupon coeff will be updated in coupon')
+            except ValueError as e:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['status'] = 'Coupon coeff will be updated in coupon'
                 coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
                 coupon_delete_all.click()
                 time.sleep(1)
                 QUEUE.put_nowait(event)
                 logging.info('Put event in QUEUE')
+                logging.info('Coupon coeff will be updated in coupon')
+                logging.info(str(e))
                 break
-            except StaleElementReferenceException:  # TODO я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
-                logging.info('StaleElementReferenceException, i dont know what is it')
+            except StaleElementReferenceException as e:  # TODO я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-                event['status'] = 'cant found coupon coeff'
+                event['status'] = 'Cant found coupon coeff'
                 time.sleep(1)
                 QUEUE.put_nowait(event)
                 logging.info('Put event in QUEUE')
+                logging.info('StaleElementReferenceException, i dont know what is it')
+                logging.info(str(e))
                 break
 
         if (event['coeff'] - 0.2) > coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = EVENT_COUPONCOEFF_NOT_GOOD_STATUS
+            event['status'] = STATUS_NOT_TRY_COUPON_COEFF
             QUEUE.put_nowait(event)
-            logging.info("NOT TRY COEFF")
+            logging.info("Not try coupon coeff")
             logging.info('Put event in QUEUE')
             continue
         # if (event['coeff'] * (100 - COEFF_DIFF_PERCENTAGE)/100) > coupon_coeff:  # запасной код на случай если понадобится сделать проценты
@@ -633,20 +656,26 @@ def start_marathon_bot(QUEUE):
             stake_field.send_keys(BET_MOUNT_RUB)
             logging.info('Stake field found and bet amount entered')
             time.sleep(1)
-        except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+        except Exception as e:  # вернул событие в очередь, может быть не надо?
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = 'CANT PRINT BET MOUNT IN STAKE FIELD'
-            logging.info('CANT PRINT BET MOUNT IN STAKE FIELD')
+            event['status'] = 'Cant print bet mount in stake field'
+            QUEUE.put_nowait(event)
+            logging.info('Cant print bet mount in stake field')
+            logging.info('Put event in QUEUE')
+            logging.info(str(e))
             continue
 
         try:
             stake_accept_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, STAKE_ACCEPT_BUTTON_XPATH)))  # "принять" ставку
             stake_accept_button.click()
             logging.info('Accept button found and click')
-        except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+        except Exception as e:  # вернул событие в очередь, может быть не надо?
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = 'CANT CLICK ACCEPT BUTTON'
-            logging.info('CANT CLICK ACCEPT BUTTON')
+            event['status'] = 'Cant click accept button'
+            QUEUE.put_nowait(event)
+            logging.info('Cant click accept button')
+            logging.info('Put event in QUEUE')
+            logging.info(str(e))
             continue
 
         # TODO здесь должна быть проверка на то, что ставка принята
@@ -656,14 +685,17 @@ def start_marathon_bot(QUEUE):
             stake_OK_button.click()
             logging.info('close message')
             time.sleep(2)
-        except BaseException:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+        except Exception as e:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
             event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = 'CANT CLICK ACCEPT BUTTON'
-            logging.info('CANT CLICK ACCEPT BUTTON')
+            event['status'] = 'Cant click accept button'
+            QUEUE.put_nowait(event)
+            logging.info('Cant click accept button')
+            logging.info('Put event in QUEUE')
+            logging.info(str(e))
             continue
 
         event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-        event['status'] = EVENT_BET_ACCEPTED_STATUS
+        event['status'] = STATUS_BET_ACCEPTED
         logging.info('Bet accepted')
         time.sleep(5) # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
         # except:
@@ -696,5 +728,5 @@ if __name__ == "__main__":  # хз зачем это, скопировал из 
         main()
     except Exception as e:
         logging.exception(e)
-        a = str(input())  # TODO что делает эта строчка? печатает в терминал ошибку?
+        a = str(input())  # TODO что делает эта строчка? печатает в терминал ошибку? ааааааа..га, наверное ставит бота на паузу
         raise e
