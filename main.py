@@ -314,15 +314,19 @@ def show_more(driver_mar):
     wait_3 = WebDriverWait(driver_mar, 3)
     wait_5 = WebDriverWait(driver_mar, 5)
 
-    event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
-    event_more_button.click()
-    logging.info('show_more: Event more button found and click')
-    time.sleep(2)
+    try:
+        event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
+        event_more_button.click()
+    except TimeoutException as e:
 
-    event_more_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, ALL_MARKETS_BUTTON_FPATH)))
-    event_more_button.click()
+        logging.info('show_more: Event more button not found')
+    logging.info('show_more: Event more button found and click')
+    time.sleep(0.5)
+
+    all_markets_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, ALL_MARKETS_BUTTON_FPATH)))
+    all_markets_button.click()
     logging.info('show_more: Event all markets button found and click')
-    time.sleep(1)
+    time.sleep(0.5)
     logging.info('show_more: stop')
 
 
@@ -494,26 +498,29 @@ def start_marathon_bot(QUEUE):
             event['status'] = STATUS_SPORT_NOT_DEFINED
             continue
 
-        try:  # найти время начала события
-            event['time_event_start'] = driver_mar.find_element(By.CLASS_NAME, 'date.date-short').text
-        except TimeoutException as e:  # время начала события
-            event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = STATUS_NO_SEARCH_RESULTS
-            QUEUE.put_nowait(event)
-            logging.info('Put event in QUEUE')
-            logging.info('Event time start not found on "Sport" TAB')
-            logging.info(str(e))
-            continue
+        if event['id'] == None:
+            try:  # найти айди события
+                id = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
+            except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['status'] = STATUS_NO_SEARCH_RESULTS
+                logging.info('Event not found on "Sport" TAB')
+                logging.info(str(e))
+                continue
+            event['id'] = id[id.find('+-+') + 3:]
 
-        try:  # найти айди события
-            id = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
-        except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
-            event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
-            event['status'] = STATUS_NO_SEARCH_RESULTS
-            logging.info('Event not found on "Sport" TAB')
-            logging.info(str(e))
-            continue
-        event['id'] = id[id.find('+-+') + 3:]
+        if event['time_event_start'] == None:
+            try:  # найти время начала события
+                event['time_event_start'] = driver_mar.find_element(By.CLASS_NAME, 'date.date-short').text
+            except TimeoutException as e:  # если время начала события не нашлось, то установить "дефолтное" - 23:59
+                event['time_event_start'] = '23:59'
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['status'] = STATUS_NO_SEARCH_RESULTS
+                QUEUE.put_nowait(event)
+                logging.info('Put event in QUEUE')
+                logging.info('Event time start not found on "Sport" TAB')
+                logging.info(str(e))
+                continue
 
         try:  # если в купоне есть событие(-ия), то купон будет очищен (теоретически в купоне не может быть больше чем 1 маркет)
             coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
@@ -531,6 +538,12 @@ def start_marathon_bot(QUEUE):
             elif event['type'][:2] == 'W2':  # победа команды 2
                 choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, TENNIS_WINNER2_BUTTON_FPATH)))
                 choice_element.click()
+            else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+                logging.info('Event type not defined')
+                # TODO писать сообщение в конфу, что тип события не определен
+                event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+                event['status'] = STATUS_TYPE_NOT_DEFINED
+                continue
         elif event['sport'] == 'Футбол':
             if event['type'][:2] == 'W1':  # победа команды 1
                 choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, SOCCER_WINNER1_BUTTON_FPATH)))
@@ -598,6 +611,8 @@ def start_marathon_bot(QUEUE):
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = STATUS_TYPE_NOT_DEFINED
                 continue
+        elif event['sport'] == 'Хоккей':
+            pass
 
         try:
             coeff_element = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # ищем значение коэф-та в купоне TODO не работает с двумя и более выборами в одном купоне
@@ -609,7 +624,6 @@ def start_marathon_bot(QUEUE):
             logging.info('Market not found')
             logging.info(str(e))
             continue
-        time.sleep(1)
 
         while True:  # сделал while, потому что хз как иначе сделать ожидание коэфициента, когда он не является кнопкой
             try:
