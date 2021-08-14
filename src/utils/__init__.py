@@ -21,7 +21,8 @@ def get_driver(path_browser_profile, username):
     options = webdriver.ChromeOptions()
     options.add_argument("user-data-dir={}".format(path_browser_profile))
     options.add_argument("--start-maximized")
-    options.add_experimental_option("excludeSwitches", ["ignore-certificate-errors", "safebrowsing-disable-download-protection", "safebrowsing-disable-auto-update", "disable-client-side-phishing-detection"])
+    # options.add_argument("--no-sandbox")
+    options.add_experimental_option("excludeSwitches", ["ignore-certificate-errors", "safebrowsing-disable-download-protection", "safebrowsing-disable-auto-update", "disable-client-side-phishing-detection", "enable-logging"])
     driver = webdriver.Chrome(options=options)
     open("{}/{}".format(path_browser_profile, username), "w").close()
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {

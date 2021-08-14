@@ -1,12 +1,10 @@
 {
  "marathon_mirror": "http://zerkalo.z0nd.xyz/?type=telegram_bot&bk=1",
- "token": "1942409777:AAELDDNnsoZg6wghG3z8XTXtYiyFBcU_zfg",
- "bot_id": "0",
- "path": "/workdir/browser_profiles",
+ "token": "1922028724:AAE6sCrpRpYivmxirneOFlFk956u3V8ChSk",
+ "bot_id": "1",
  "username": "6714278",
  "password": "Gup2702dims",
  "bet_mount_rub": 20,
- "first_try": false,
  "freq_update_sec": 1200,
  "time_before_the_start": 900
 }
