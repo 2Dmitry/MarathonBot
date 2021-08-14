@@ -1,19 +1,19 @@
 import time
+from datetime import datetime
 import json
 import os
 import shutil
 import multiprocessing
-from datetime import datetime
+from multiprocessing import Process, Queue
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, NoSuchElementException, \
     StaleElementReferenceException
-from src.utils import get_driver
-from multiprocessing import Process, Queue
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
+from src.utils import get_driver
 import logging
 import telebot  # Подключаем Telegram API
-from telebot import types  # Подключаем библиотеку для создания кнопок
+#from telebot import types  # Подключаем библиотеку для создания кнопок
 
 
 #==============================<Глобальные переменные>==============================
@@ -24,8 +24,11 @@ LOGS_PATH = 'workdir/logs'
 #==============================</Глобальные переменные>=============================
 
 
+
+
 os.makedirs(LOGS_PATH, exist_ok=True)  # создаем необходимые папки
 os.makedirs(BETS_PATH, exist_ok=True)  # создаем необходимые папки
+
 logging.basicConfig(filename=LOGS_PATH+"/{}.log".format(datetime.now().strftime('%d-%m-%Y_%H-%M-%S')),
                     format=u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s',
                     level=logging.DEBUG)
@@ -33,6 +36,7 @@ logging.basicConfig(filename=LOGS_PATH+"/{}.log".format(datetime.now().strftime(
 logging.getLogger('selenium.webdriver.remote.remote_connection').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.debug('Start')
+
 try:  # читаем конфиг файл  # TODO завернуть это в функцию
     with open('config.json', encoding=ENCODING) as f:
         CONFIG_JSON = json.load(f)
@@ -41,6 +45,8 @@ except FileNotFoundError as e:
     logging.exception('Config file not found')
     logging.exception(str(e))
     raise e
+
+
 
 
 #==================<Телеграм бот>=====================================================
@@ -86,14 +92,20 @@ TENNIS_WINNER2_BUTTON_FPATH = '//*[@id="category11981449"]/div/div/div[2]/table/
 #==================</Кнопки и поля, которые есть в бк MarathonBet>=================
 
 
-def move_bets_history():
-    try:  # перемещаем историю сделанных ставок из корня проекта в соответсвующую папку
-        shutil.move('bets.json', BETS_PATH+'/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
+def move_bets_history(dict):  # читаем историю ставок, если файл найден, значит у бота есть стартовая инфа
+    try:
+        with open('bets.json', encoding=ENCODING) as f:
+            dict = json.load(f)
+            logging.info('Bets history file open')
     except FileNotFoundError:
-        pass
+        logging.info('Bets history file not found')
+        return dict
+
+    shutil.move('bets.json', BETS_PATH+'/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
+    return dict
 
 
-def get_date_sec(text):                                     # 08-08-2021_09-11-54
+def convert_date_into_seconds(text):                                     # 08-08-2021_09-11-54
     text = text[text.find('-') + 1:]                        # 08-2021_09-11-54
     text = text[text.find('-') + 1:]                        # 2021_09-11-54
     text = text[text.find('_') + 1:]                        # 09-11-54
@@ -110,9 +122,9 @@ def get_date_sec(text):                                     # 08-08-2021_09-11-5
     return summ_seconds
 
 
-def get_time_start(text):
+def convert_start_time_match_into_seconds(text):
     if ' ' in text:  # если дата это строка такого рода: "1 авг 02:00"
-        text = text[text.find(' ') + 1:]  # "авг 02:00"
+        # text = text[text.find(' ') + 1:]  # "авг 02:00"
         # text = text[text.find(' ') + 1:]  # "02:00"
         return 24 * 3600  # типа событие в 23:59 начинается
     hours = text[:text.find(':')]
@@ -125,7 +137,7 @@ def get_time_start(text):
     return summ_seconds
 
 
-def put_in_queue(text, tg_message_unixdate):
+def parse_TGmessage_with_event(text, tg_message_unixdate):
     event = {}                                                          # 0123456789@0123456789@0123456789@0123456789@0123456789@0123456789@012
     event['status'] = STATUS_NEW
     event['id'] = None
@@ -145,25 +157,27 @@ def put_in_queue(text, tg_message_unixdate):
     event['type'] = text[:text.find('=')]                               # O(1)=1.57;
     event['coeff'] = float(text[text.find('=') + 1:text.find(';')])     # O(1)=1.57;
     event['coupon_coeff'] = None
-    logging.info(f'Bot takes event: {event["date_added"]}')
-    EVENTS_QUEUE.put_nowait(event)
-    logging.info('Put event in QUEUE')
+    logging.info(f'Bot takes event: {event["date_message_send"]}')
+    return event
 
 
-def update_config_file():
+
+def update_config_file():  # TODO delete: not use
     with open('config.json', 'w', encoding=ENCODING) as f:
         json.dump(CONFIG_JSON, f, indent=1)
         logging.info('Config file saved')
 
 
 @TELEGRAM_BOT.message_handler(content_types=['text'])
-def get_text_messages(message):
+def get_text_TGmessages(message):
     if message.text == 'bot id':
         TELEGRAM_BOT.send_message(message.chat.id, CONFIG_JSON["bot_id"])
     elif message.text == (f'bot{CONFIG_JSON["bot_id"]} привет'):
         TELEGRAM_BOT.send_message(message.chat.id, f'bot{CONFIG_JSON["bot_id"]} говорит: "Привет <3"')
     elif ';' in message.text:  # если пришло именно событие в сообщении, значит после вида спорта должна обязательно стоять ";"
-        put_in_queue(message.text, message.date)
+        event = parse_TGmessage_with_event(message.text, message.date)
+        EVENTS_QUEUE.put_nowait(event)
+        logging.info('Put event in QUEUE')
         TELEGRAM_BOT.send_message(message.chat.id, f'bot{CONFIG_JSON["bot_id"]} получил событие')
     elif message.text == 'stop':
         pass  # TODO придумать что-нибудь
@@ -171,12 +185,12 @@ def get_text_messages(message):
         TELEGRAM_BOT.send_message(message.chat.id, f'bot{CONFIG_JSON["bot_id"]} вас не понимает')
 
 
-def login(driver_mar):
+def log_in_marathonbet_account(webdriver_mar):
     logging.info('login: start')
 
-    wait_2 = WebDriverWait(driver_mar, 2)
-    wait_3 = WebDriverWait(driver_mar, 3)
-    wait_5 = WebDriverWait(driver_mar, 5)
+    wait_2 = WebDriverWait(webdriver_mar, 2)
+    wait_3 = WebDriverWait(webdriver_mar, 3)
+    wait_5 = WebDriverWait(webdriver_mar, 5)
 
     try:
         wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
@@ -215,9 +229,9 @@ def login(driver_mar):
     logging.info('login: stop')
 
 
-def close_bk_message(driver_mar):
+def close_bk_message(webdriver_mar):
     logging.info('close_bk_message: start')
-    wait_2 = WebDriverWait(driver_mar, 2)
+    wait_2 = WebDriverWait(webdriver_mar, 2)
 
     try:
         message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_BK_MESSAGE_BUTTON_CLASS)))
@@ -231,9 +245,9 @@ def close_bk_message(driver_mar):
     logging.info('close_bk_message: stop')
 
 
-def close_promo_message(driver_mar):
+def close_promo_message(webdriver_mar):
     logging.info('close_promo_message: start')
-    wait_2 = WebDriverWait(driver_mar, 2)
+    wait_2 = WebDriverWait(webdriver_mar, 2)
 
     try:
         message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_PROMO_MESSAGE_BUTTON_CLASS)))
@@ -247,89 +261,90 @@ def close_promo_message(driver_mar):
     logging.info('close_promo_message: stop')
 
 
-def search_event(driver_mar, event_name):
-    logging.info('search_event: start')
-    wait_3 = WebDriverWait(driver_mar, 3)
-    wait_5 = WebDriverWait(driver_mar, 5)
+def search_event_by_teams(webdriver_mar, teams):
+    logging.info('search_event_by_teams: start')
+    wait_3 = WebDriverWait(webdriver_mar, 3)
+    wait_5 = WebDriverWait(webdriver_mar, 5)
 
     try:
         search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
         search_icon_button.click()
     except ElementClickInterceptedException as e:  # данное исключение бывает в том случае, если открыта и не решена гугл капча
-        logging.info('search_event: !!!GOOGLE CAPCHA!!! Search icon button found and not clickable')
+        logging.info('search_event_by_teams: !!!GOOGLE CAPCHA!!! Search icon button found and not clickable')
         logging.info(str(e))
-        logging.info('search_event: stop')
+        logging.info('search_event_by_teams: stop')
         # time.sleep(7200)
         return
-    logging.info('search_event: Search icon button found and click')
+    logging.info('search_event_by_teams: Search icon button found and click')
     time.sleep(2.5)
 
     search_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, SEARCH_FIELD_CLASS)))
     search_field.clear()
-    search_field.send_keys(event_name)
-    logging.info('search_event: Search field found and click, event_name enter')
+    search_field.send_keys(teams)
+    logging.info('search_event_by_teams: Search field found and click, event_name enter')
     time.sleep(2.5)
 
     search_enter_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ENTER_BUTTON_XPATH)))
     search_enter_button.click()
-    logging.info('search_event: Search enter button found and click')
+    logging.info('search_event_by_teams: Search enter button found and click')
     time.sleep(2.5)
 
     try:
         search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException:
-        logging.info('search_event: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
+        logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
         # TODO ну тут надо сделать уведомление, что ниче не найдено
-        logging.info('search_event: stop')
+        logging.info('search_event_by_teams: stop')
         return
     search_sport_tab_button.click()
-    logging.info('search_event: Search sports tab button found and click')
+    logging.info('search_event_by_teams: Search sports tab button found and click')
     time.sleep(1.5)
 
-    logging.info('search_event: stop')
+    logging.info('search_event_by_teams: stop')
 
 
-def show_more(driver_mar):
-    logging.info('show_more: start')
-    wait_3 = WebDriverWait(driver_mar, 3)
-    wait_5 = WebDriverWait(driver_mar, 5)
+def show_more_markets(webdriver_mar):
+    logging.info('show_more_markets: start')
+    wait_3 = WebDriverWait(webdriver_mar, 3)
+    wait_5 = WebDriverWait(webdriver_mar, 5)
 
     try:
         event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
         event_more_button.click()
     except TimeoutException:
-        logging.info('show_more: Event more button not found')
-        logging.info('show_more: stop')
+        logging.info('show_more_markets: Event more button not found')
+        logging.info('show_more_markets: stop')
         #logging.info(e)  # штатная ситуация, наверное можно не писать об ошибке
         return
-    logging.info('show_more: Event more button found and click')
+    logging.info('show_more_markets: Event more button found and click')
     time.sleep(1)
 
     all_markets_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, ALL_MARKETS_BUTTON_FPATH)))
     all_markets_button.click()
-    logging.info('show_more: Event all markets button found and click')
+    logging.info('show_more_markets: Event all markets button found and click')
     time.sleep(1)
-    logging.info('show_more: stop')
+    logging.info('show_more_markets: stop')
 
 
-def get_table_list(driver_mar, str):
+def get_market_table_by_name(webdriver_mar, str):
     table_lst = []
-    for table in driver_mar.find_elements_by_tag_name('div'):
+    for table in webdriver_mar.find_elements_by_tag_name('div'):
         if table.get_attribute('class') == '':
             table_once = table.find_elements_by_class_name('market-table-name')
             if len(table_once) == 1:
-                if table_once[0].text != str:
-                    continue
                 if table_once[0].text == str:
                     for table_once_tr in table.find_elements_by_tag_name('tr'):
                         for table_once_tr_td in table_once_tr.find_elements_by_tag_name('td'):
                             table_lst.append(table_once_tr_td)
-                    break
-    logging.info('get_table_list: got table with coeff and markets')
-    return table_lst
+                    return table_lst
+                else:
+                    continue
+
+    logging.info('get_market_table_by_name: got table with coeff and markets')
+    return
 
 
-def sort_table_list(lst, team_num):
+def sort_market_table_by_teamnumb(lst, team_num):
     new_lst = []
     if team_num == 1:
         for i in range(0, len(lst), 2):
@@ -337,7 +352,7 @@ def sort_table_list(lst, team_num):
     if team_num == 2:
         for i in range(1, len(lst), 2):
             new_lst.append(lst[i])
-    logging.info('sort_table_list: create new list (teams/under/over)')
+    logging.info('sort_market_table_by_teamnumb: create new list (teams/under/over)')
     return new_lst
 
 
@@ -374,18 +389,18 @@ def collect_total_str(str, total_value):
     return str
 
 
-def change_language(driver_mar):
-    wait_2 = WebDriverWait(driver_mar, 2)
+def change_language(webdriver_mar):
+    wait_2 = WebDriverWait(webdriver_mar, 2)
     logging.info('change_language: start')
 
-    close_bk_message(driver_mar)
+    close_bk_message(webdriver_mar)
 
     lang_settings_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]')))
     lang_settings_button.click()
     logging.info('change_language: found and click change language button')
     time.sleep(1)
 
-    close_bk_message(driver_mar)
+    close_bk_message(webdriver_mar)
 
     languages_rus_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]/div[2]/div/div[2]/span[6]/span[2]')))
     languages_rus_button.click()
@@ -396,35 +411,40 @@ def change_language(driver_mar):
 
 
 def start_marathon_bot(events_queue):
-    driver_mar = get_driver('/GoogleChrome', CONFIG_JSON['username'])
+    webdriver_mar = get_driver('/GoogleChrome', CONFIG_JSON['username'])
     logging.info('Browser is open')
 
-    wait_1 = WebDriverWait(driver_mar, 1)
-    wait_3 = WebDriverWait(driver_mar, 3)
-    wait_5 = WebDriverWait(driver_mar, 5)
+    wait_1 = WebDriverWait(webdriver_mar, 1)
+    wait_3 = WebDriverWait(webdriver_mar, 3)
+    wait_5 = WebDriverWait(webdriver_mar, 5)
 
-    driver_mar.get(CONFIG_JSON['marathon_mirror'])
+    webdriver_mar.get(CONFIG_JSON['marathon_mirror'])
     logging.info("Marathon's page is open")
 
-    login(driver_mar)  # вход в аккаунт
+    log_in_marathonbet_account(webdriver_mar)  # вход в аккаунт
 
-    close_bk_message(driver_mar)  # закрытие уведомления от букмекера
-    close_promo_message(driver_mar)  # закрытие рекламного уведомления от букмекера
+    close_bk_message(webdriver_mar)  # закрытие уведомления от букмекера
+    close_promo_message(webdriver_mar)  # закрытие рекламного уведомления от букмекера
 
-    change_language(driver_mar)  # сменить язык на русский
+    change_language(webdriver_mar)  # сменить язык на русский
 
-    close_bk_message(driver_mar)  # закрытие уведомления от букмекера
-    close_promo_message(driver_mar)  # закрытие рекламного уведомления от букмекера
+    close_bk_message(webdriver_mar)  # закрытие уведомления от букмекера
+    close_promo_message(webdriver_mar)  # закрытие рекламного уведомления от букмекера
 
     N = 0
     datenow = None
     event = None
     events_dict = {}
 
+    move_bets_history(events_dict)
+    # events_dict = move_bets_history(events_dict)
+    # TODO в очередь положить события, которые могут быть еще "сыграны"
+    print(events_dict)
+
     while True:
         if event != None:
             if event['status'] == STATUS_BET_ACCEPTED:
-                event['processing_time'] = get_date_sec(event['date_last_try']) - datenow
+                event['processing_time'] = convert_date_into_seconds(event['date_last_try']) - datenow
             teams = event['team1'] + ' - ' + event['team2']
             events_dict[teams + ' - ' + str(event['date_message_send'])] = event
             with open('bets.json', 'w', encoding=ENCODING) as f:
@@ -441,12 +461,12 @@ def start_marathon_bot(events_queue):
         else:
             event = events_queue.get()
             logging.info(f'Get event {event["date_added"]} from QUEUE')
-            datenow = get_date_sec(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
-            diff_sec = datenow - get_date_sec(event['date_last_try'])
+            datenow = convert_date_into_seconds(datetime.now().strftime('%d-%m-%Y_%H-%M-%S'))
+            diff_sec = datenow - convert_date_into_seconds(event['date_last_try'])
             if event['time_event_start'] != None:
-                diff_sec2 = get_time_start(event['time_event_start']) - datenow
+                diff_sec2 = convert_start_time_match_into_seconds(event['time_event_start']) - datenow
             else:
-                diff_sec2 = get_time_start('23:59') - datenow
+                diff_sec2 = convert_start_time_match_into_seconds('23:59') - datenow
             if event['date_last_try'] != '00-00-0000_00-00-00':
                 if (diff_sec < CONFIG_JSON["freq_update_sec"]) and (diff_sec2 > CONFIG_JSON['time_before_the_start']):    # if (diff_sec > FREQ_UPDATE_SEC) or (diff_sec2 < TIME_BEFORE_THE_START):
                                                                                             # событие будет возвращено в очередь,
@@ -472,9 +492,9 @@ def start_marathon_bot(events_queue):
             event['status'] = STATUS_IN_PROGRESS
 
         if event['sport'] == 'Теннис':  # найти собыйтие через поисковую строку, переключиться на вкладку "Спорт"  # TODO запихнуть это в if который ниже отвечает за поиск маркета
-            search_event(driver_mar, event['team1'])  # поиск события
+            search_event_by_teams(webdriver_mar, event['team1'])  # поиск события
         elif event['sport'] == 'Футбол' or event['sport'] == 'Хоккей':
-            search_event(driver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
+            search_event_by_teams(webdriver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
         else:   # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
                 # надо просто изменить значение его полей и при заходе на новый цикл информация в файле bets будет обновлена
             logging.info('Event sport not defined')
@@ -484,7 +504,7 @@ def start_marathon_bot(events_queue):
 
         if event['id'] == None:
             try:  # найти айди события
-                id = driver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
+                id = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
                 event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
                 event['status'] = STATUS_NO_SEARCH_RESULTS
@@ -495,7 +515,7 @@ def start_marathon_bot(events_queue):
 
         if event['time_event_start'] == None:
             # try:  # найти время начала события
-            event['time_event_start'] = driver_mar.find_element_by_class_name('date.date-short').text
+            event['time_event_start'] = webdriver_mar.find_element_by_class_name('date.date-short').text
             # except TimeoutException as e:  # если время начала события не нашлось, то установить "дефолтное" - 23:59  # TODO delete
             #     event['time_event_start'] = '23:59'
             #     event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
@@ -537,49 +557,49 @@ def start_marathon_bot(events_queue):
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[8]')))
                     pass
                 elif event['type'][0] == 'O' or event['type'][0] == 'U':  # тотал
-                    show_more(driver_mar)
+                    show_more_markets(webdriver_mar)
                     total_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
                     total_asia = False
                     if total_value * 100 % 50 != 0:
                         total_asia = True
                     if total_asia:
                         total_str = collect_total_str('asia', total_value)
-                        table_list = get_table_list(driver_mar, 'Азиатский тотал голов')
+                        table_list = get_market_table_by_name(webdriver_mar, 'Азиатский тотал голов')
                     else:
                         total_str = collect_total_str('simple', total_value)
-                        table_list = get_table_list(driver_mar, 'Тотал голов')
+                        table_list = get_market_table_by_name(webdriver_mar, 'Тотал голов')
                     if event['type'][0] == 'U':  # тотал меньше
-                        choice_list = sort_table_list(table_list, 1)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(total_str) != -1:
                                 break
                     elif event['type'][0] == 'O':  # тотал больше
-                        choice_list = sort_table_list(table_list, 2)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(total_str) != -1:
                                 break
                 elif event['type'][:2] == 'AH':  # азиатская фора или просто фора
-                    show_more(driver_mar)
+                    show_more_markets(webdriver_mar)
                     handicap_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
                     handicap_asia = False
                     if handicap_value * 100 % 50 != 0:
                         handicap_asia = True
                     if handicap_asia:
                         handicap_str = collect_handicap_str('asia', handicap_value)
-                        table_list = get_table_list(driver_mar, 'Победа с учетом азиатской форы')
+                        table_list = get_market_table_by_name(webdriver_mar, 'Победа с учетом азиатской форы')
                     else:
                         handicap_str = collect_handicap_str('simple', handicap_value)
-                        table_list = get_table_list(driver_mar, 'Победа с учетом форы')
+                        table_list = get_market_table_by_name(webdriver_mar, 'Победа с учетом форы')
                     if event['type'][2] == '1':  # азиатская фора или просто фора на 1ю команду
-                        choice_list = sort_table_list(table_list, 1)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(handicap_str) != -1:
                                 break
                     elif event['type'][2] == '2':  # азиатская фора или просто фора на 2ю команду
-                        choice_list = sort_table_list(table_list, 2)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(handicap_str) != -1:
@@ -604,35 +624,35 @@ def start_marathon_bot(events_queue):
                     choice_element = wait_5.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[8]')))
                     pass
                 elif event['type'][0] == 'O' or event['type'][0] == 'U':  # тотал
-                    show_more(driver_mar)
+                    show_more_markets(webdriver_mar)
                     total_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
                     total_str = collect_total_str('simple', total_value)
-                    table_list = get_table_list(driver_mar, 'Тотал голов')
+                    table_list = get_market_table_by_name(webdriver_mar, 'Тотал голов')
                     if event['type'][0] == 'U':  # тотал меньше
-                        choice_list = sort_table_list(table_list, 1)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(total_str) != -1:
                                 break
                     elif event['type'][0] == 'O':  # тотал больше
-                        choice_list = sort_table_list(table_list, 2)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(total_str) != -1:
                                 break
                 elif event['type'][:2] == 'AH':  # азиатская фора или просто фора
-                    show_more(driver_mar)
+                    show_more_markets(webdriver_mar)
                     handicap_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
                     handicap_str = collect_handicap_str('simple', handicap_value)
-                    table_list = get_table_list(driver_mar, 'Победа с учетом форы')
+                    table_list = get_market_table_by_name(webdriver_mar, 'Победа с учетом форы')
                     if event['type'][2] == '1':  # азиатская фора или просто фора на 1ю команду
-                        choice_list = sort_table_list(table_list, 1)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(handicap_str) != -1:
                                 break
                     elif event['type'][2] == '2':  # азиатская фора или просто фора на 2ю команду
-                        choice_list = sort_table_list(table_list, 2)
+                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
                         while len(choice_list) > 1:
                             choice_element = choice_list.pop()
                             if choice_element.text.find(handicap_str) != -1:
@@ -701,7 +721,7 @@ def start_marathon_bot(events_queue):
                 logging.info('Put event in QUEUE')
                 logging.info('Coupon coeff will be updated in coupon')
                 logging.info(str(e))
-                driver_mar.refresh
+                webdriver_mar.refresh
                 continue
             # except StaleElementReferenceException as e:  # TODO delete я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
             #     event['date_last_try'] = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
@@ -789,7 +809,6 @@ def start_marathon_bot(events_queue):
 
 
 def main():
-    move_bets_history()
     Process(target=start_marathon_bot, name='start_marathon_bot', args=(EVENTS_QUEUE,)).start()
     TELEGRAM_BOT.polling(none_stop=True, interval=0)
 
