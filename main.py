@@ -22,6 +22,8 @@ ENCODING = 'utf-8'
 BETS_PATH = 'workdir/bets'
 LOGS_PATH = 'workdir/logs'
 DATE_FORMAT = '%Y-%m-%d_%H-%M-%S'
+MAIN_CHAT_ID = -1001541447697
+MYSELF_CHAT_ID = 477446257
 #==============================</Глобальные переменные>=============================
 
 
@@ -56,6 +58,7 @@ TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])  # инициализиро
 
 
 #==============================<Event status>=======================================
+# TODO enum
 STATUS_NEW = 'New'
 STATUS_IN_PROGRESS = 'In progress'
 STATUS_NO_SEARCH_RESULTS = 'No search results'
@@ -84,10 +87,6 @@ STAKE_FIELD_CLASS = 'stake.stake-input.js-focusable'
 STAKE_ACCEPT_BUTTON_XPATH = '//*[@id="betslip_placebet_btn_id"]'
 CATEGORY_CLASS = 'category-label-link'
 ALL_MARKETS_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'
-SOCCER_WINNER1_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[3]'
-SOCCER_WINNER2_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/table/tbody/tr/td[5]'
-TENNIS_WINNER1_BUTTON_FPATH = '//*[@id="category11981449"]/div/div/div[2]/table/tbody/tr/td[3]'
-TENNIS_WINNER2_BUTTON_FPATH = '//*[@id="category11981449"]/div/div/div[2]/table/tbody/tr/td[4]'
 #==================</Кнопки и поля, которые есть в бк MarathonBet>=================
 
 
@@ -154,6 +153,7 @@ def parse_TGmessage_with_event(text, tg_message_unixdate):
     event['team2'] = text[text.find(' vs ') + 4:text.find(':')]         # Ранхейм vs Фредрикстад: O(1)=1.57;
     text = text[text.find(':') + 2:]                                    # O(1)=1.57;
     event['type'] = text[:text.find('=')]                               # O(1)=1.57;
+    event['winner_team'] = None
     event['coeff'] = float(text[text.find('=') + 1:text.find(';')])     # O(1)=1.57;
     event['coupon_coeff'] = None
     logging.info(f'Bot takes event: {event["date_message_send"]}')
@@ -242,20 +242,24 @@ def close_promo_message(webdriver_mar):
     logging.info('close_promo_message: stop')
 
 
-def search_event_by_teams(webdriver_mar, teams):
+def search_event_by_teams(webdriver_mar, event):
     logging.info('search_event_by_teams: start')
     wait_3 = WebDriverWait(webdriver_mar, 3)
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
-    try:
-        search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
-        search_icon_button.click()
-    except ElementClickInterceptedException as e:  # данное исключение бывает в том случае, если открыта и не решена гугл капча
-        logging.info('search_event_by_teams: !!!GOOGLE CAPCHA!!! Search icon button found and not clickable')
-        logging.info(str(e))
-        logging.info('search_event_by_teams: stop')
-        # time.sleep(7200)
-        return
+    if event['sport'] == 'Теннис':  # найти собыйтие через поисковую строку, переключиться на вкладку "Спорт"  # TODO запихнуть это в if который ниже отвечает за поиск маркета
+        teams = event['team1']
+    elif event['sport'] == 'Футбол' or event['sport'] == 'Хоккей':
+        teams = event['team1'] + ' - ' + event['team2']
+    else:  # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
+        # надо просто изменить значение его полей и при заходе на новый цикл информация в файле bets будет обновлена
+        logging.info('Event sport not defined')
+        event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+        event['status'] = STATUS_SPORT_NOT_DEFINED
+        return False
+
+    search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
+    search_icon_button.click()
     logging.info('search_event_by_teams: Search icon button found and click')
     time.sleep(2.5)
 
@@ -270,18 +274,20 @@ def search_event_by_teams(webdriver_mar, teams):
     logging.info('search_event_by_teams: Search enter button found and click')
     time.sleep(2.5)
 
-    try:  # по-моему вкладка спорт всегда активна просто на ней либо 0 событий либо 1, либо 1+ (очень редко)
+    try:
         search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException:
-            logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
-            # TODO ну тут надо сделать уведомление, что ниче не найдено
-            logging.info('search_event_by_teams: stop')
-            return
+        event['status'] = STATUS_NO_SEARCH_RESULTS
+        logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
+        # TODO ну тут надо сделать уведомление, что ниче не найдено
+        logging.info('search_event_by_teams: stop')
+        return False
     search_sport_tab_button.click()
     logging.info('search_event_by_teams: Search sports tab button found and click')
     time.sleep(1.5)
 
     logging.info('search_event_by_teams: stop')
+    return True
 
 
 def show_more_markets(webdriver_mar):
@@ -293,11 +299,11 @@ def show_more_markets(webdriver_mar):
         event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
         event_more_button.click()
     except TimeoutException:
-        logging.info('show_more_markets: Event more button not found')
+        logging.info('show_more_markets: Event all markets button not found')
         logging.info('show_more_markets: stop')
-        #logging.info(e)  # штатная ситуация, наверное можно не писать об ошибке
+        #logging.info(e)  # штатная ситуация, означает что линия "узкая"
         return
-    logging.info('show_more_markets: Event more button found and click')
+    logging.info('show_more_markets: Event all markets button found and click')
     time.sleep(1)
 
     all_markets_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, ALL_MARKETS_BUTTON_FPATH)))
@@ -307,7 +313,7 @@ def show_more_markets(webdriver_mar):
     logging.info('show_more_markets: stop')
 
 
-def get_market_table_by_name(webdriver_mar, str):
+def get_markets_table_by_name(webdriver_mar, str):
     table_lst = []
     for table in webdriver_mar.find_elements_by_tag_name('div'):
         if table.get_attribute('class') == '':
@@ -319,8 +325,6 @@ def get_market_table_by_name(webdriver_mar, str):
                             table_lst.append(table_once_tr_td)
                     logging.info('get_market_table_by_name: got table with markets')
                     return table_lst
-                else:
-                    continue
 
     logging.info('get_market_table_by_name: got table with markets')
     return
@@ -342,6 +346,7 @@ def get_main_market_table(webdriver_mar):
 
 
 def sort_market_table_by_teamnumb(lst, team_num):
+    team_num = int(team_num)
     new_lst = []
     if team_num == 1:
         for i in range(0, len(lst), 2):
@@ -463,7 +468,6 @@ def start_marathon_bot(events_queue):
                 json.dump(events_dict, f, indent=1, ensure_ascii=False)
             logging.info('bets.json updated')
             event = None
-        logging.info('event is None')
 
         if events_queue.empty():
             # TODO добавить каждые 30 минут клики в "пустоту"
@@ -472,7 +476,7 @@ def start_marathon_bot(events_queue):
             continue
         else:
             event = events_queue.get()
-            logging.info(f'Get event {event["date_added"]} from QUEUE')
+            logging.info(f'Get event {event["date_message_send"]} from QUEUE')
 
             datenow = convert_date_into_seconds(datetime.now().strftime(DATE_FORMAT))
             diff_sec = datenow - convert_date_into_seconds(event['date_last_try'])
@@ -502,194 +506,120 @@ def start_marathon_bot(events_queue):
                     continue
             event['status'] = STATUS_IN_PROGRESS
 
-        if event['sport'] == 'Теннис':  # найти собыйтие через поисковую строку, переключиться на вкладку "Спорт"  # TODO запихнуть это в if который ниже отвечает за поиск маркета
-            search_event_by_teams(webdriver_mar, event['team1'])  # поиск события
-        elif event['sport'] == 'Футбол' or event['sport'] == 'Хоккей':
-            search_event_by_teams(webdriver_mar, event['team1'] + ' - ' + event['team2'])  # поиск события
-        else:   # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
-                # надо просто изменить значение его полей и при заходе на новый цикл информация в файле bets будет обновлена
-            logging.info('Event sport not defined')
-            event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            event['status'] = STATUS_SPORT_NOT_DEFINED
+        if not search_event_by_teams(webdriver_mar, event):
             continue
 
-        if event['id'] == None:
-            try:  # найти айди события
+        if not event['id']:
+            try:
                 id = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
                 event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                event['status'] = STATUS_NO_SEARCH_RESULTS
-                logging.info('Event not found on "Sport" TAB')
+                event['status'] = 'Event isnot on the Sports tab'
+                logging.info('Event isnot on the Sports tab')
                 logging.info(str(e))
                 continue
             event['id'] = id[id.find('+-+') + 3:]
 
-        if event['time_event_start'] == None:
-            # try:  # найти время начала события
-            event['time_event_start'] = webdriver_mar.find_element_by_class_name('date.date-short').text
-            # except TimeoutException as e:  # если время начала события не нашлось, то установить "дефолтное" - 23:59  # TODO delete
-            #     event['time_event_start'] = '23:59'
-            #     event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            #     event['status'] = STATUS_NO_SEARCH_RESULTS
-            #     events_queue.put_nowait(event)
-            #     logging.info('Put event in QUEUE')
-            #     logging.info('Event time start not found on "Sport" TAB')
-            #     logging.info(str(e))
-            #     continue
+        if not event['time_event_start']:
+            try:
+                event['time_event_start'] = webdriver_mar.find_element_by_class_name('date.date-short').text
+            except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
+                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                event['status'] = STATUS_NO_SEARCH_RESULTS
+                logging.info(STATUS_NO_SEARCH_RESULTS)
+                logging.info(str(e))
+                continue
 
-        event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-        time.sleep(1.5)
-        choice_element = None
-        main_market_list = get_main_market_table(webdriver_mar)
-        # for elem in main_market_list:
-        #     print(elem.text + ';')
-        # time.sleep(999)
-        try:  # если WHILE то continue, если if то pass
-            if event['sport'] == 'Теннис':
-                if event['type'][:2] == 'W1' or (event['type'][0] == '1' and len(event['type']) == 1):  # победа команды 1
-                    choice_element = main_market_list[0]
-                    pass
-                elif event['type'][:2] == 'W2' or (event['type'][0] == '2' and len(event['type']) == 1):  # победа команды 2
-                    choice_element = main_market_list[1]
-                    pass
-                else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                    logging.info('Event type not defined')
-                    # TODO писать сообщение в конфу, что тип события не определен
-                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                    event['status'] = STATUS_TYPE_NOT_DEFINED
-                    continue
-            elif event['sport'] == 'Футбол':
-                if event['type'][:2] == 'W1' or (event['type'][0] == '1' and len(event['type']) == 1):  # победа команды 1
-                    choice_element = main_market_list[0]
-                    pass
-                elif event['type'][:2] == '1X':  # 1X победа команды 1 или ничья
-                    choice_element = main_market_list[3]
-                    pass
-                elif event['type'][:2] == 'W2' or (event['type'][0] == '2' and len(event['type']) == 1):  # победа команды 2
-                    choice_element = main_market_list[2]
-                    pass
-                elif event['type'][:2] == 'X2':  # X2 победа команды 2 или ничья
-                    choice_element = main_market_list[5]
-                    pass
-                elif event['type'][0] == 'O' or event['type'][0] == 'U':  # тотал
-                    show_more_markets(webdriver_mar)
-                    total_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
-                    total_asia = False
-                    if total_value * 100 % 50 != 0:
-                        total_asia = True
-                    if total_asia:
-                        total_str = collect_total_str('asia', total_value)
-                        table_list = get_market_table_by_name(webdriver_mar, 'Азиатский тотал голов')
-                    else:
-                        total_str = collect_total_str('simple', total_value)
-                        table_list = get_market_table_by_name(webdriver_mar, 'Тотал голов')
-                    if event['type'][0] == 'U':  # тотал меньше
-                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(total_str) != -1:
-                                break
-                    elif event['type'][0] == 'O':  # тотал больше
-                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(total_str) != -1:
-                                break
-                elif event['type'][:2] == 'AH':  # азиатская фора или просто фора
-                    show_more_markets(webdriver_mar)
-                    handicap_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
-                    handicap_asia = False
-                    if handicap_value * 100 % 50 != 0:
-                        handicap_asia = True
-                    if handicap_asia:
-                        handicap_str = collect_handicap_str('asia', handicap_value)
-                        table_list = get_market_table_by_name(webdriver_mar, 'Победа с учетом азиатской форы')
-                    else:
-                        handicap_str = collect_handicap_str('simple', handicap_value)
-                        table_list = get_market_table_by_name(webdriver_mar, 'Победа с учетом форы')
-                    if event['type'][2] == '1':  # азиатская фора или просто фора на 1ю команду
-                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(handicap_str) != -1:
-                                break
-                    elif event['type'][2] == '2':  # азиатская фора или просто фора на 2ю команду
-                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(handicap_str) != -1:
-                                break
-                else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                    logging.info('Event type not defined')
-                    # TODO писать сообщение в конфу, что тип события не определен
-                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                    event['status'] = STATUS_TYPE_NOT_DEFINED
-                    continue
-            elif event['sport'] == 'Хоккей':  # TODO бывает ли исход "победа или ничья"
-                if event['type'][:2] == 'W1' or (event['type'][0] == '1' and len(event['type']) == 1):  # победа команды 1
-                    choice_element = main_market_list[0]
-                    pass
-                elif event['type'][:2] == '1X':  # 1X победа команды 1 или ничья
-                    choice_element = main_market_list[3]
-                    pass
-                elif event['type'][:2] == 'W2' or (event['type'][0] == '2' and len(event['type']) == 1):  # победа команды 2
-                    choice_element = main_market_list[2]
-                    pass
-                elif event['type'][:2] == 'X2':  # X2 победа команды 2 или ничья
-                    choice_element = main_market_list[5]
-                    pass
-                elif event['type'][0] == 'O' or event['type'][0] == 'U':  # тотал
-                    show_more_markets(webdriver_mar)
-                    total_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
-                    total_str = collect_total_str('simple', total_value)
-                    table_list = get_market_table_by_name(webdriver_mar, 'Тотал голов')
-                    if event['type'][0] == 'U':  # тотал меньше
-                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(total_str) != -1:
-                                break
-                    elif event['type'][0] == 'O':  # тотал больше
-                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(total_str) != -1:
-                                break
-                elif event['type'][:2] == 'AH':  # азиатская фора или просто фора
-                    show_more_markets(webdriver_mar)
-                    handicap_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
-                    handicap_str = collect_handicap_str('simple', handicap_value)
-                    table_list = get_market_table_by_name(webdriver_mar, 'Победа с учетом форы')
-                    if event['type'][2] == '1':  # азиатская фора или просто фора на 1ю команду
-                        choice_list = sort_market_table_by_teamnumb(table_list, 1)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(handicap_str) != -1:
-                                break
-                    elif event['type'][2] == '2':  # азиатская фора или просто фора на 2ю команду
-                        choice_list = sort_market_table_by_teamnumb(table_list, 2)
-                        while len(choice_list) > 1:
-                            choice_element = choice_list.pop()
-                            if choice_element.text.find(handicap_str) != -1:
-                                break
-                else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-                    logging.info('Event type not defined')
-                    # TODO писать сообщение в конфу, что тип события не определен
-                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                    event['status'] = STATUS_TYPE_NOT_DEFINED
-                    continue
-        except StaleElementReferenceException as e:  # selenium.common.exceptions.StaleElementReferenceException: Message: stale element reference: element is not attached to the page document
+        market = None
+        winner = False
+        total = False
+        handicap = False
+        if event['type'][0] == 'W':  # W1 / W2
+            winner = True
+            event['winner_team'] = int(event['type'][1])
+        elif (event['type'][0] == '1' or event['type'][0] == '2') and len(event['type']) == 1:  # 1 / 2
+            winner = True
+            event['type'] = 'W' + event['type'][0]
+            event['winner_team'] = int(event['type'][1])
+        elif event['type'][0] == 'U':  # U(?.??)
+            total = True
+            event['winner_team'] = 1
+        elif event['type'][0] == 'O':  # O(?.??)
+            total = True
+            event['winner_team'] = 2
+        elif event['type'][:2] == 'AH':  # AH1(?.??) / AH2(?.??)
+            handicap = True
+            if event['type'][2] == '1' or event['type'][2] == '2':
+                event['winner_team'] = int(event['type'][2])
+            else:
+                logging.info('Event handicap type not defined')
+                # TODO писать сообщение в конфу, что тип события не определен
+                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                event['status'] = STATUS_TYPE_NOT_DEFINED
+                continue
+        else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+            logging.info('Event type not defined')
+            # TODO писать сообщение в конфу, что тип события не определен
             event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            event['status'] = STATUS_MARKET_NOT_FOUND
-            events_queue.put_nowait(event)
-            logging.info('Put event in QUEUE')
-            logging.info('Market not found')
-            logging.info(str(e))
+            event['status'] = STATUS_TYPE_NOT_DEFINED
             continue
 
-        while True:  # сделал while, потому что хз как иначе сделать ожидание коэфициента, когда он не является кнопкой
+        main_market_bar = get_main_market_table(webdriver_mar)
+
+        if event['sport'] == 'Теннис':
+            if winner:  # победа команды 1 / победа команды 2
+                if event['winner_team'] == 1:  # победа команды 1
+                    market = main_market_bar[0]
+                elif event['winner_team'] == 2:  # победа команды 2
+                    market = main_market_bar[1]
+        elif event['sport'] == 'Футбол' or event['sport'] == 'Хоккей':
+            if winner:  # победа команды 1 / победа команды 2
+                if event['winner_team'] == 1:  # победа команды 1
+                    market = main_market_bar[0]
+                elif event['winner_team'] == 2:  # победа команды 2
+                    market = main_market_bar[2]
+            elif event['type'][:2] == '1X':  # победа команды 1 или ничья
+                market = main_market_bar[3]
+            elif event['type'][:2] == 'X2':  # победа команды 2 или ничья
+                market = main_market_bar[5]
+
+        if total or handicap:
+            show_more_markets(webdriver_mar)
+            market_value = float(event['type'][event['type'].find('(') + 1:event['type'].find(')')])
+            if market_value * 100 % 50 == 0:  # обычный тотал или фора
+                if total:
+                    market_str = collect_total_str('simple', market_value)
+                    markets_table_name = 'Тотал голов'
+                elif handicap:
+                    market_str = collect_handicap_str('simple', market_value)
+                    markets_table_name = 'Победа с учетом форы'
+            elif market_value * 100 % 25 == 0:  # азиатский тотал или фора
+                if total:
+                    market_str = collect_total_str('asia', market_value)
+                    markets_table_name = 'Азиатский тотал голов'
+                elif handicap:
+                    market_str = collect_handicap_str('asia', market_value)
+                    markets_table_name = 'Победа с учетом азиатской форы'
+
+            markets_table = []
+            if total:
+                markets_table.append(main_market_bar[8])
+                markets_table.append(main_market_bar[9])
+            elif handicap:
+                markets_table.append(main_market_bar[6])
+                markets_table.append(main_market_bar[7])
+
+            for mrkt in get_markets_table_by_name(webdriver_mar, markets_table_name):
+                markets_table.append(mrkt)
+
+            winner_team_markets = sort_market_table_by_teamnumb(markets_table, event['winner_team'])
+            while len(winner_team_markets) != 0:
+                market = winner_team_markets.pop()
+                if market.text.find(market_str) != -1:
+                    break
+
+        while True:
             try:
-                # TODO надо обновить страницу
                 try:  # если в купоне есть событие(-ия), то купон будет очищен (теоретически в купоне не может быть больше чем 1 маркета)
                     coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
                     coupon_delete_all.click()
@@ -699,20 +629,12 @@ def start_marathon_bot(events_queue):
                     logging.info('Coupon is empty')
                     pass
 
-                if choice_element != None:
-                    # try:  # кликаем по найденному маркету
-                    choice_element.click()
+                if market is not None:
+                    print(market.text)
+                    market.click()
                     logging.info('Click on market')
                     time.sleep(1)
-                    # except TimeoutException as e:  # TODO delete это можно удалить я думаю
-                    #     event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                    #     event['status'] = STATUS_MARKET_NOT_FOUND
-                    #     events_queue.put_nowait(event)
-                    #     logging.info('Put event in QUEUE')
-                    #     logging.info('Market not found')
-                    #     logging.info(str(e))
-                    #     continue
-                else:  # TODO а вот это нужно оставить
+                else:
                     event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
                     event['status'] = STATUS_MARKET_NOT_FOUND
                     events_queue.put_nowait(event)
@@ -720,8 +642,8 @@ def start_marathon_bot(events_queue):
                     logging.info('Market not found')
                     break
 
-                coeff_element = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # ищем значение коэф-та в купоне TODO не работает с двумя и более выборами в одном купоне
-                coupon_coeff = float(coeff_element.text[coeff_element.text.find(':') + 2:])
+                coupon_coeff = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # ищем значение коэф-та в купоне TODO не работает с двумя и более выборами в одном купоне
+                coupon_coeff = float(coupon_coeff.text[coupon_coeff.text.find(':') + 2:])
                 event['coupon_coeff'] = coupon_coeff
                 event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
                 event['status'] = 'Found coupon coeff'
@@ -737,25 +659,14 @@ def start_marathon_bot(events_queue):
                 logging.info('Coupon coeff will be updated in coupon')
                 logging.info(str(e))
                 webdriver_mar.refresh
+                logging.info('Refresh page')
                 continue
-            # except StaleElementReferenceException as e:  # TODO delete я хз, когда срабатывает это исключение... (предположение: срабаывает тогда, когда был клик на исход, но купон не успел отобразиться)
-            #     event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            #     event['status'] = 'Cant found coupon coeff'
-            #     time.sleep(1)
-            #     events_queue.put_nowait(event)
-            #     logging.info('Put event in QUEUE')
-            #     logging.info('StaleElementReferenceException, i dont know what is it')
-            #     logging.info(str(e))
-            #     continue
-
-        if event['status'] == STATUS_MARKET_NOT_FOUND:
-            continue
 
         if (event['coeff'] - 0.2) > coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
             event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
             event['status'] = STATUS_NOT_TRY_COUPON_COEFF
             events_queue.put_nowait(event)
-            logging.info("Not try coupon coeff")
+            logging.info('Not try coupon coeff')
             logging.info('Put event in QUEUE')
             continue
         # if (event['coeff'] * (100 - COEFF_DIFF_PERCENTAGE)/100) > coupon_coeff:  # запасной код на случай если понадобится сделать проценты
@@ -792,7 +703,6 @@ def start_marathon_bot(events_queue):
             continue
 
         # TODO здесь должна быть проверка на то, что ставка принята
-
         try:  # TODO DELETE
             stake_OK_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="ok-button"]')))  # закрываем уведомление о том, что нехватка средств на счете
             stake_OK_button.click()
@@ -800,9 +710,9 @@ def start_marathon_bot(events_queue):
             time.sleep(2)
         except Exception as e:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
             event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            event['status'] = 'Cant click accept button'
+            event['status'] = 'Cant click OK button'
             events_queue.put_nowait(event)
-            logging.info('Cant click accept button')
+            logging.info('Cant click OK button')
             logging.info('Put event in QUEUE')
             logging.info(str(e))
             continue

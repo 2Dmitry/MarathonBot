@@ -1,19 +1,20 @@
 {
- "Злин B - Высочина Йиглава B - 1629013355": {
-  "status": "Bet accepted",
-  "id": "684598",
-  "date_message_send": 1629013355,
-  "date_added": "15-08-2021_10-42-50",
-  "date_last_try": "15-08-2021_10-43-37",
-  "time_event_start": "11:30",
-  "processing_time": 19,
+ "Кельн - Герта Берлин - 1629048798": {
+  "status": "No search results",
+  "id": null,
+  "date_message_send": 1629048798,
+  "date_added": "2021-08-15_20-33-18",
+  "date_last_try": "0000-00-00_00-00-00",
+  "time_event_start": null,
+  "processing_time": null,
   "desc": null,
   "sport": "Футбол",
-  "league": "Czech - League 3",
-  "team1": "Злин B",
-  "team2": "Высочина Йиглава B",
-  "type": "W1",
-  "coeff": 1.4,
-  "coupon_coeff": 1.36
+  "league": "Germany - League 1",
+  "team1": "Кельн",
+  "team2": "Герта Берлин",
+  "type": "AH(0)",
+  "winner_team": null,
+  "coeff": 1.79,
+  "coupon_coeff": null
  }
 }
