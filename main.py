@@ -98,10 +98,9 @@ TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])  # инициализиро
 
 
 def send_message_to_mail(email_message_queue):
-    n = 1
-    DEBUG = True
+    n = 0
     while True:
-        if n == 0 and DEBUG:
+        if n == 0:
             SMTP_OBJ.sendmail('marathon_bet_bots@bk.ru', 'milovdd@mail.ru', f'bot{CONFIG_JSON["bot_id"]} is running')
             n = 1
 
@@ -109,8 +108,10 @@ def send_message_to_mail(email_message_queue):
             time.sleep(5)
             continue
         else:
+            text = []
+            while not email_message_queue.empty():
+                text.append(email_message_queue.get())
             for toaddr in MASTERS:
-                text = email_message_queue.get()
                 SMTP_OBJ.sendmail('marathon_bet_bots@bk.ru', toaddr, text)
             time.sleep(5)
     SMTP_OBJ.quit()
@@ -166,6 +167,7 @@ def parse_TGmessage_with_event(text, tg_message_unixdate):
              'id': None,
              'date_message_send': tg_message_unixdate,
              'date_added': datetime.now().strftime(DATE_FORMAT),
+             'date_bet_accept': None,
              'date_last_try': '0000-00-00_00-00-00',
              'time_event_start': None,
              'processing_time': None,
@@ -181,6 +183,7 @@ def parse_TGmessage_with_event(text, tg_message_unixdate):
     event['winner_team'] = None
     event['coeff'] = float(text[text.find('=') + 1:text.find(';')])  # O(1)=1.57;
     event['coupon_coeff'] = None
+    event['history_coeff'] = []
     logging.info(f'Bot takes event: {event["date_message_send"]}')
     return event
 
@@ -293,31 +296,30 @@ def search_event_by_teams(webdriver_mar, event):
     search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
     search_icon_button.click()
     logging.info('search_event_by_teams: Search icon button found and click')
-    time.sleep(2.5)
+    time.sleep(3)
 
     search_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, SEARCH_FIELD_CLASS)))
     search_field.clear()
     search_field.send_keys(teams)
     logging.info('search_event_by_teams: Search field found and click, event_name enter')
-    time.sleep(2.5)
+    time.sleep(3)
 
     search_enter_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ENTER_BUTTON_XPATH)))
     search_enter_button.click()
     logging.info('search_event_by_teams: Search enter button found and click')
-    time.sleep(2.5)
+    time.sleep(3)
 
     try:
         search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException:
         event['status'] = STATUS_NO_SEARCH_RESULTS
-        logging.info(
-            'search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
+        logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
         # TODO ну тут надо сделать уведомление, что ниче не найдено
         logging.info('search_event_by_teams: stop')
         return False
     search_sport_tab_button.click()
     logging.info('search_event_by_teams: Search sports tab button found and click')
-    time.sleep(1.5)
+    time.sleep(2)
 
     logging.info('search_event_by_teams: stop')
     return True
@@ -696,7 +698,13 @@ def start_marathon_bot(events_queue, email_message_queue):
                 break
 
             # ищем значение коэф-та в купоне P.S. не работает с двумя и более выборами в одном купоне
-            coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))
+            try:
+                coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))
+            except TimeoutException:
+                logging.info('ALARM! Dont know what is it')
+                webdriver_mar.refresh()
+                logging.info('Refresh page')
+                continue
             try:
                 coupon_coeff = float(coupon_coeff.text[coupon_coeff.text.find(':') + 2:])
             except ValueError:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
@@ -709,7 +717,9 @@ def start_marathon_bot(events_queue, email_message_queue):
                 webdriver_mar.refresh()
                 logging.info('Refresh page')
                 continue
-            event['coupon_coeff'] = coupon_coeff
+
+            event['history_coeff'].append(datetime.now().strftime('%H:%M:%S'))
+            event['history_coeff'].append(coupon_coeff)
             event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
             event['status'] = 'Found coupon coeff'
             break
@@ -717,7 +727,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         if event['status'] == STATUS_MARKET_NOT_FOUND:
             continue
 
-        if (event['coeff'] - 0.2) >= coupon_coeff:
+        if (event['coeff'] - 0.2) > coupon_coeff:
             # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
             event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
             event['status'] = STATUS_NOT_TRY_COUPON_COEFF
@@ -759,7 +769,9 @@ def start_marathon_bot(events_queue, email_message_queue):
             continue
 
         webdriver_mar.refresh()
+        event['coupon_coeff'] = coupon_coeff
         event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+        event['date_bet_accept'] = datetime.now().strftime(DATE_FORMAT)
         event['status'] = STATUS_BET_ACCEPTED
         logging.info('Bet accepted')
         time.sleep(5)  # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
@@ -835,6 +847,7 @@ if __name__ == "__main__":  # хз зачем это, скопировал из 
     try:
         main()
     except Exception as e:
-        print(e)
+        print(str(e))
+        EMAIL_MESSAGE_QUEUE.put_nowait(str(e))
         logging.exception(str(e))
         raise e
