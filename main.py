@@ -330,10 +330,9 @@ def show_more_markets(webdriver_mar):
     try:
         event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
         event_more_button.click()
-    except TimeoutException:
+    except TimeoutException:  # штатная ситуация, означает что линия "узкая"
         logging.info('show_more_markets: Event all markets button not found')
         logging.info('show_more_markets: stop')
-        # logging.info(e)  # штатная ситуация, означает что линия "узкая"
         return
     logging.info('show_more_markets: Event all markets button found and click')
     time.sleep(1)
@@ -371,14 +370,6 @@ def get_markets_table_by_name(webdriver_mar, markets_table_name):
                     markets_list.append(market)
                 logging.info('get_market_table_by_name: got table with markets')
                 return markets_list
-
-    # for markets_table in webdriver_mar.find_elements_by_class_name('market-table-name'):
-    #     if markets_table[0].text == markets_table_name:
-    #         for markets_table_tr in table.find_elements_by_tag_name('tr'):
-    #             for markets_table_tr_td in markets_table_tr.find_elements_by_tag_name('td'):
-    #                 markets_list.append(markets_table_tr_td)
-    #         logging.info('get_market_table_by_name: got table with markets')
-    #         return markets_list
 
     logging.info('get_market_table_by_name: cant get table with markets')
     return markets_list
@@ -659,23 +650,9 @@ def start_marathon_bot(events_queue, email_message_queue):
                 if total:
                     market_str = collect_total_str('simple', market_value)
                     markets_table_name = 'Тотал голов'
-                    # if event['winner_team'] == 1:  # тотал меньше
-                    #     market_poss = main_market_bar[8]
-                    # elif event['winner_team'] == 2:  # тотал больше
-                    #     market_poss = main_market_bar[9]
                 elif handicap:
                     market_str = collect_handicap_str('simple', market_value)
                     markets_table_name = 'Победа с учетом форы'
-                    # if event['winner_team'] == 1:  # фора на 1 команду
-                    #     market_poss = main_market_bar[6]
-                    # elif event['winner_team'] == 2:  # фора на 2 команду
-                    #     market_poss = main_market_bar[7]
-                # if len(markets_list) == 1:
-                #     if markets_list[0].text.find(market_str) != -1:
-                #         market = markets_list.pop()
-                #     else:
-                #         markets_list.pop()  # надо очистить список, чтобы после show_more_markets с ним можно было норм работать
-            elif market_value * 100 % 25 == 0:  # азиатский тотал или фора
                 if total:
                     market_str = collect_total_str('asia', market_value)
                     markets_table_name = 'Азиатский тотал голов'
@@ -782,22 +759,6 @@ def start_marathon_bot(events_queue, email_message_queue):
             continue
 
         webdriver_mar.refresh()
-
-        # # TODO здесь должна быть проверка на то, что ставка принята
-        # try:  # TODO DELETE class="button no simplemodal-close"
-        #     stake_OK_button = wait_5.until(ec.element_to_be_clickable(By.XPATH, '//*[@id="ok-button"]/span'))  # закрываем уведомление о том, что нехватка средств на счете
-        #     stake_OK_button.click()
-        #     logging.info('close message')
-        #     time.sleep(2)
-        # except Exception as e:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-        #     event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-        #     event['status'] = 'Cant click OK button'
-        #     events_queue.put_nowait(event)
-        #     logging.info('Cant click OK button')
-        #     logging.info('Put event in QUEUE')
-        #     logging.info(str(e))
-        #     continue
-
         event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
         event['status'] = STATUS_BET_ACCEPTED
         logging.info('Bet accepted')
