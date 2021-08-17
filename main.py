@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from src.utils import get_driver
 import logging
-import telebot  # Подключаем Telegram API
+import telebot
 import smtplib
 # from telebot import types  # Подключаем библиотеку для создания кнопок
 
@@ -702,7 +702,7 @@ def start_marathon_bot(events_queue, email_message_queue):
             except ValueError:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
                 event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
                 event['status'] = 'Coupon coeff will be updated in coupon'
-                coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH,'/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
+                coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
                 coupon_delete_all.click()
                 time.sleep(1)
                 logging.info('Coupon coeff will be updated in coupon')
