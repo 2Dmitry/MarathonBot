@@ -1,20 +1,20 @@
 {
- "Кельн - Герта Берлин - 1629048798": {
+ "Рейнджерс Талька - Кобрелоа - 1629168205": {
   "status": "No search results",
   "id": null,
-  "date_message_send": 1629048798,
-  "date_added": "2021-08-15_20-33-18",
+  "date_message_send": 1629168205,
+  "date_added": "2021-08-17_05-43-25",
   "date_last_try": "0000-00-00_00-00-00",
   "time_event_start": null,
   "processing_time": null,
   "desc": null,
   "sport": "Футбол",
-  "league": "Germany - League 1",
-  "team1": "Кельн",
-  "team2": "Герта Берлин",
-  "type": "AH(0)",
+  "league": "Chile - League 2",
+  "team1": "Рейнджерс Талька",
+  "team2": "Кобрелоа",
+  "type": "AH1(0)",
   "winner_team": null,
-  "coeff": 1.79,
+  "coeff": 1.51,
   "coupon_coeff": null
  }
 }
