@@ -180,7 +180,9 @@ def parse_TGmessage_with_event(text, tg_message_unixdate):
     event['team2'] = text[text.find(' vs ') + 4:text.find(':')]  # Ранхейм vs Фредрикстад: O(1)=1.57;
     text = text[text.find(':') + 2:]  # O(1)=1.57;
     event['type'] = text[:text.find('=')]  # O(1)=1.57;
+    event['markets_table_name'] = None
     event['winner_team'] = None
+    event['market_str'] = None
     event['coeff'] = float(text[text.find('=') + 1:text.find(';')])  # O(1)=1.57;
     event['coupon_coeff'] = None
     event['history_coeff'] = []
@@ -350,8 +352,7 @@ def get_markets_table_by_name(webdriver_mar, markets_table_name):
     shortcut_name = 'Все выборы'
     if markets_table_name.find('Тотал голов') != -1 or markets_table_name.find('Азиатский тотал голов') != -1:
         shortcut_name = 'Тоталы'
-    elif markets_table_name.find('Победа с учетом форы') != -1 or markets_table_name.find(
-            'Победа с учетом азиатской форы') != -1:
+    elif markets_table_name.find('Победа с учетом форы') != -1 or markets_table_name.find('Победа с учетом азиатской форы') != -1:
         shortcut_name = 'Форы'
 
     for table in webdriver_mar.find_elements_by_tag_name('table'):
@@ -361,7 +362,7 @@ def get_markets_table_by_name(webdriver_mar, markets_table_name):
                     if element_from_shortcut_menu_row.text.find(shortcut_name) != -1:
                         element_from_shortcut_menu_row.click()
                         logging.info('get_market_table_by_name: found and click on shortcut menu')
-                        time.sleep(1)
+                        time.sleep(2)
                 break
 
     markets_list = []
@@ -539,7 +540,7 @@ def start_marathon_bot(events_queue, email_message_queue):
             continue
         else:
             event = events_queue.get()
-            logging.info(f'Get event {event["date_message_send"]} from QUEUE')
+            logging.info(f'Get event {event["date_message_send"]} from QUEUE, coeff: {event["coeff"]}')
 
             datenow = convert_date_into_seconds(datetime.now().strftime(DATE_FORMAT))
             diff_sec = datenow - convert_date_into_seconds(event['date_last_try'])
@@ -575,46 +576,47 @@ def start_marathon_bot(events_queue, email_message_queue):
         total = False
         handicap = False
         win_or_draw = False
-        if event['type'][0] == 'W':  # W1 / W2
-            winner = True
-            event['winner_team'] = int(event['type'][1])
-        elif (event['type'][0] == '1' or event['type'][0] == '2') and len(event['type']) == 1:  # 1 / 2
-            winner = True
-            event['type'] = 'W' + event['type'][0]
-            event['winner_team'] = int(event['type'][1])
-        elif event['type'][:2] == '1X':  # 1X
-            win_or_draw = True
-            event['winner_team'] = 1
-        elif event['type'][:2] == 'X2':  # X2
-            win_or_draw = True
-            event['winner_team'] = 2
-        elif event['type'][0] == 'U':  # U(?.??)
-            total = True
-            event['winner_team'] = 1
-        elif event['type'][0] == 'O':  # O(?.??)
-            total = True
-            event['winner_team'] = 2
-        elif event['type'][:2] == 'AH':  # AH1(?.??) / AH2(?.??)
-            handicap = True
-            if event['type'][2] == '1' or event['type'][2] == '2':
-                event['winner_team'] = int(event['type'][2])
-            else:
-                logging.info('Event handicap type not defined')
+        if event['winner_team'] is None:
+            if event['type'][0] == 'W':  # W1 / W2
+                winner = True
+                event['winner_team'] = int(event['type'][1])
+            elif (event['type'][0] == '1' or event['type'][0] == '2') and len(event['type']) == 1:  # 1 / 2
+                winner = True
+                event['type'] = 'W' + event['type'][0]
+                event['winner_team'] = int(event['type'][1])
+            elif event['type'][:2] == '1X':  # 1X
+                win_or_draw = True
+                event['winner_team'] = 1
+            elif event['type'][:2] == 'X2':  # X2
+                win_or_draw = True
+                event['winner_team'] = 2
+            elif event['type'][0] == 'U':  # U(?.??)
+                total = True
+                event['winner_team'] = 1
+            elif event['type'][0] == 'O':  # O(?.??)
+                total = True
+                event['winner_team'] = 2
+            elif event['type'][:2] == 'AH':  # AH1(?.??) / AH2(?.??)
+                handicap = True
+                if event['type'][2] == '1' or event['type'][2] == '2':
+                    event['winner_team'] = int(event['type'][2])
+                else:
+                    logging.info('Event handicap type not defined')
+                    # TODO писать сообщение в конфу, что тип события не определен
+                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                    event['status'] = STATUS_TYPE_NOT_DEFINED
+                    continue
+            else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+                logging.info('Event type not defined')
                 # TODO писать сообщение в конфу, что тип события не определен
                 event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
                 event['status'] = STATUS_TYPE_NOT_DEFINED
                 continue
-        else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
-            logging.info('Event type not defined')
-            # TODO писать сообщение в конфу, что тип события не определен
-            event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            event['status'] = STATUS_TYPE_NOT_DEFINED
-            continue
 
         if not search_event_by_teams(webdriver_mar, event):
             continue
 
-        if not event['id']:
+        if event['id'] is None:
             try:
                 event_id = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
@@ -625,7 +627,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 continue
             event['id'] = event_id[event_id.find('+-+') + 3:]
 
-        if not event['time_event_start']:
+        if event['time_event_start'] is None:
             try:
                 event['time_event_start'] = webdriver_mar.find_element_by_class_name('date.date-short').text
             except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
@@ -648,19 +650,23 @@ def start_marathon_bot(events_queue, email_message_queue):
                 continue
 
             # market_poss = None
-            if market_value * 100 % 50 == 0:  # обычный тотал или фора
-                if total:
-                    market_str = collect_total_str('simple', market_value)
-                    markets_table_name = 'Тотал голов'
-                elif handicap:
-                    market_str = collect_handicap_str('simple', market_value)
-                    markets_table_name = 'Победа с учетом форы'
-                if total:
-                    market_str = collect_total_str('asia', market_value)
-                    markets_table_name = 'Азиатский тотал голов'
-                elif handicap:
-                    market_str = collect_handicap_str('asia', market_value)
-                    markets_table_name = 'Победа с учетом азиатской форы'
+            if event['market_str'] is None and event['markets_table_name'] is None:
+                if market_value * 100 % 50 == 0:  # обычный тотал или фора
+                    if total:
+                        market_str = collect_total_str('simple', market_value)
+                        markets_table_name = 'Тотал голов'
+                    elif handicap:
+                        market_str = collect_handicap_str('simple', market_value)
+                        markets_table_name = 'Победа с учетом форы'
+                else:
+                    if total:
+                        market_str = collect_total_str('asia', market_value)
+                        markets_table_name = 'Азиатский тотал голов'
+                    elif handicap:
+                        market_str = collect_handicap_str('asia', market_value)
+                        markets_table_name = 'Победа с учетом азиатской форы'
+                event['market_str'] = market_str
+                event['markets_table_name'] = markets_table_name
 
         coupon_coeff = 0
         while True:
@@ -700,7 +706,7 @@ def start_marathon_bot(events_queue, email_message_queue):
             # ищем значение коэф-та в купоне P.S. не работает с двумя и более выборами в одном купоне
             try:
                 coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))
-            except TimeoutException:
+            except TimeoutException:  # TODO я правда хз как вызвать это исключение
                 logging.info('ALARM! Dont know what is it')
                 webdriver_mar.refresh()
                 logging.info('Refresh page')
