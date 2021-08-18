@@ -30,9 +30,9 @@ MYSELF_CHAT_ID = 477446257
 
 
 # ==============================<EMAIL>=============================
-SMTP_OBJ = smtplib.SMTP('smtp.mail.ru', 587)
-SMTP_OBJ.starttls()
-SMTP_OBJ.login('marathon_bet_bots@bk.ru', 'UPEjoz8xJbrjsM3v45Fz')
+# SMTP_OBJ = smtplib.SMTP('smtp.mail.ru', 587)
+# SMTP_OBJ.starttls()
+# SMTP_OBJ.login('marathon_bet_bots@bk.ru', 'UPEjoz8xJbrjsM3v45Fz')
 MASTERS = ['milovdd@mail.ru', 'pozdnyakov.aleksey.m@gmail.com', 'panamanagolve@gmail.com']
 # ==============================</EMAIL>=============================
 
@@ -97,24 +97,24 @@ TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])  # инициализиро
 # ==================</Телеграм бот>=====================================================
 
 
-def send_message_to_mail(email_message_queue):
-    n = 0
-    while True:
-        if n == 0:
-            SMTP_OBJ.sendmail('marathon_bet_bots@bk.ru', 'milovdd@mail.ru', f'bot{CONFIG_JSON["bot_id"]} is running')
-            n = 1
-
-        if email_message_queue.empty():
-            time.sleep(5)
-            continue
-        else:
-            text = []
-            while not email_message_queue.empty():
-                text.append(email_message_queue.get())
-            for toaddr in MASTERS:
-                SMTP_OBJ.sendmail('marathon_bet_bots@bk.ru', toaddr, text)
-            time.sleep(5)
-    SMTP_OBJ.quit()
+# def send_message_to_mail(email_message_queue):
+#     n = 0
+#     while True:
+#         if n == 0:
+#             SMTP_OBJ.sendmail('marathon_bet_bots@bk.ru', 'milovdd@mail.ru', f'bot{CONFIG_JSON["bot_id"]} is running')
+#             n = 1
+#
+#         if email_message_queue.empty():
+#             time.sleep(5)
+#             continue
+#         else:
+#             text = []
+#             while not email_message_queue.empty():
+#                 text.append(email_message_queue.get())
+#             for toaddr in MASTERS:
+#                 SMTP_OBJ.sendmail('marathon_bet_bots@bk.ru', toaddr, text)
+#             time.sleep(5)
+#     SMTP_OBJ.quit()
 
 
 def move_bets_history(event_dict):  # читаем историю ставок, если файл найден, значит у бота есть стартовая инфа
@@ -327,25 +327,25 @@ def search_event_by_teams(webdriver_mar, event):
     return True
 
 
-def show_more_markets(webdriver_mar):
-    logging.info('show_more_markets: start')
+def show_more_markets_or_do_nothing(webdriver_mar):
+    logging.info('show_more_markets_or_do_nothing: start')
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     try:
         event_more_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, EVENT_MORE_BUTTON_CLASS)))
         event_more_button.click()
     except TimeoutException:  # штатная ситуация, означает что линия "узкая"
-        logging.info('show_more_markets: Event all markets button not found')
-        logging.info('show_more_markets: stop')
+        logging.info('show_more_markets_or_do_nothing: Event more button not found')
+        logging.info('show_more_markets_or_do_nothing: stop')
         return
-    logging.info('show_more_markets: Event all markets button found and click')
+    logging.info('show_more_markets_or_do_nothing: Event more button found and click')
     time.sleep(1)
 
     all_markets_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, 'active-shortcut-menu-link')))
     all_markets_button.click()
-    logging.info('show_more_markets: Event all markets button found and click')
+    logging.info('show_more_markets_or_do_nothing: Event more button found and click')
     time.sleep(1)
-    logging.info('show_more_markets: stop')
+    logging.info('show_more_markets_or_do_nothing: stop')
 
 
 def get_markets_table_by_name(webdriver_mar, markets_table_name):
@@ -412,12 +412,12 @@ def find_market_in_the_main_bar(main_bar, evnt, winner, total, handicap, win_or_
                 market = main_bar[3]
             elif evnt['winner_team'] == 2:  # X2
                 market = main_bar[5]
-        elif total:  # общий тотал
+        elif total and evnt['markets_table_name'] != 'Азиатский тотал голов':  # общий тотал  # TODO быдлокод
             if evnt['winner_team'] == 1:  # победа команды 1
                 market = main_bar[8]
             elif evnt['winner_team'] == 2:  # победа команды 2
                 market = main_bar[9]
-        elif handicap:  # общая фора
+        elif handicap and evnt['markets_table_name'] != 'Победа с учетом азиатской форы':  # общая фора  # TODO быдлокод
             if evnt['winner_team'] == 1:  # победа команды 1
                 market = main_bar[6]
             elif evnt['winner_team'] == 2:  # победа команды 2
@@ -667,11 +667,21 @@ def start_marathon_bot(events_queue, email_message_queue):
                         markets_table_name = 'Победа с учетом азиатской форы'
                 event['market_str'] = market_str
                 event['markets_table_name'] = markets_table_name
+            if market_str is None:
+                logging.info('cant convert event type into market_str')
+                event['desc'] = 'cant convert event type into market_str'
+                continue
+            if markets_table_name is None:
+                logging.info('cant set markets_table_name')
+                event['desc'] = 'cant set markets_table_name'
+                continue
 
         coupon_coeff = 0
+        need_to_check_main_market_bar = True
         while True:
             try:  # если в купоне есть событие(-ия), то купон будет очищен (теоретически в купоне не может быть больше чем 1 маркета)
-                coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
+                # '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span'
+                coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, 'button.btn-remove')))
                 coupon_delete_all.click()
                 time.sleep(1)
                 logging.info('Coupon cleared')
@@ -679,22 +689,42 @@ def start_marathon_bot(events_queue, email_message_queue):
                 logging.info('Coupon is empty')
                 pass
 
-            main_market_bar = get_main_market_table(webdriver_mar)
-            market = find_market_in_the_main_bar(main_market_bar, event, winner, total, handicap, win_or_draw)
-            if market is not None:
-                if market_str is not None:
-                    if market.text.find(market_str) == -1 and markets_table_name is not None:
-                        show_more_markets(webdriver_mar)
-                        markets_list.extend(get_markets_table_by_name(webdriver_mar, markets_table_name))
-                        winner_team_markets = sort_market_table_by_teamnumb(markets_list, event['winner_team'])
-                        while len(winner_team_markets) != 0:
-                            market = winner_team_markets.pop()
-                            if market.text.find(market_str) != -1:
-                                logging.info(f'Market found: {market.text}')
-                                break
-                market.click()
-                logging.info(f'Click on market: {market.text}')
-                time.sleep(1)
+            if need_to_check_main_market_bar:
+                main_market_bar = get_main_market_table(webdriver_mar)
+                market = find_market_in_the_main_bar(main_market_bar, event, winner, total, handicap, win_or_draw)
+                if market is not None and market.text.find(market_str) != -1:
+                    market.click()
+                    logging.info(f'Click on market: {market.text}')
+                    time.sleep(1)
+                    break
+                else:
+                    need_to_check_main_market_bar = False
+
+            show_more_markets_or_do_nothing(webdriver_mar)
+            markets_list.extend(get_markets_table_by_name(webdriver_mar, markets_table_name))
+            if len(markets_list) == 0:  # TODO быдлокод
+                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                event['status'] = STATUS_MARKET_NOT_FOUND
+                events_queue.put_nowait(event)
+                logging.info('Put event in QUEUE')
+                logging.info('Market not found')
+                break
+            winner_team_markets = sort_market_table_by_teamnumb(markets_list, event['winner_team'])
+            if len(winner_team_markets) == 0:  # TODO быдлокод
+                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                event['status'] = STATUS_MARKET_NOT_FOUND
+                events_queue.put_nowait(event)
+                logging.info('Put event in QUEUE')
+                logging.info('Market not found')
+                break
+            while len(winner_team_markets) != 0:  # TODO быдлокод
+                market = winner_team_markets.pop()
+                if market.text.find(market_str) != -1:
+                    logging.info(f'Market found: {market.text}')
+                    market.click()
+                    logging.info(f'Click on market: {market.text}')
+                    time.sleep(1)
+                    break
             else:
                 event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
                 event['status'] = STATUS_MARKET_NOT_FOUND
@@ -721,6 +751,19 @@ def start_marathon_bot(events_queue, email_message_queue):
                 time.sleep(1)
                 logging.info('Coupon coeff will be updated in coupon')
                 webdriver_mar.refresh()
+
+                try:
+                    search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
+                except TimeoutException:
+                    event['status'] = STATUS_NO_SEARCH_RESULTS
+                    logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')  # не найдено ни одного матча соответствующего поиску
+                    # TODO ну тут надо сделать уведомление, что ниче не найдено
+                    logging.info('search_event_by_teams: stop')
+                    return False
+                search_sport_tab_button.click()
+                logging.info('search_event_by_teams: Search sports tab button found and click')
+                time.sleep(2)
+
                 logging.info('Refresh page')
                 continue
 
@@ -793,11 +836,11 @@ def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
                 proc_marathon_bot = Process(target=start_marathon_bot, name='start_marathon_bot', args=(EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
                 proc_marathon_bot.start()
             proc_status['browser_bot_run'] = False
-        if proc_status['mail_bot_run']:
-            if not proc_marathon_bot.is_alive():
-                proc_message_to_mail = Process(target=send_message_to_mail, name='send_message_to_mail', args=(EMAIL_MESSAGE_QUEUE,))
-                proc_message_to_mail.start()
-            proc_status['mail_bot_run'] = False
+        # if proc_status['mail_bot_run']:
+        #     if not proc_marathon_bot.is_alive():
+        #         proc_message_to_mail = Process(target=send_message_to_mail, name='send_message_to_mail', args=(EMAIL_MESSAGE_QUEUE,))
+        #         proc_message_to_mail.start()
+        #     proc_status['mail_bot_run'] = False
         if proc_status['browser_bot_stop']:
             proc_marathon_bot.terminate()
             proc_status['browser_bot_stop'] = False
@@ -841,8 +884,8 @@ def botbot():  # TODO не получилось передать в процес
 def main():
     proc_marathon_bot = Process(target=start_marathon_bot, name='start_marathon_bot', args=(EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
     proc_marathon_bot.start()
-    proc_message_to_mail = Process(target=send_message_to_mail, name='send_message_to_mail', args=(EMAIL_MESSAGE_QUEUE,))
-    proc_message_to_mail.start()
+    # proc_message_to_mail = Process(target=send_message_to_mail, name='send_message_to_mail', args=(EMAIL_MESSAGE_QUEUE,))
+    # proc_message_to_mail.start()
     # Process(target=controller, name='controller', args=(proc_marathon_bot, proc_message_to_mail,)).start()
     # Process(target=botbot, name='botbot', args=()).start()
     TELEGRAM_BOT.polling(none_stop=True, interval=0)  # TODO не получилось передать в процесс очередь, поэтому делать тупо через полинг в мэйне
