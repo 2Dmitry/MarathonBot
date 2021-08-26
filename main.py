@@ -117,7 +117,8 @@ TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])  # инициализиро
 #     SMTP_OBJ.quit()
 
 
-def move_bets_history(event_dict):  # читаем историю ставок, если файл найден, значит у бота есть стартовая инфа
+def move_bets_history():  # читаем историю ставок, если файл найден, значит у бота есть стартовая инфа
+    event_dict = {}
     try:
         with open('bets.json', encoding=ENCODING) as f:
             event_dict = json.load(f)
@@ -187,6 +188,8 @@ def parse_TGmessage_with_event(text, tg_message_unixdate):
     event['coupon_coeff'] = None
     event['history_coeff'] = []
     logging.info(f'Bot takes event: {event["date_message_send"]}')
+    print(event)
+    print('\n')
     return event
 
 
@@ -350,10 +353,11 @@ def show_more_markets_or_do_nothing(webdriver_mar):
 
 def get_markets_table_by_name(webdriver_mar, markets_table_name):
     shortcut_name = 'Все выборы'
-    if markets_table_name.find('Тотал голов') != -1 or markets_table_name.find('Азиатский тотал голов') != -1:
-        shortcut_name = 'Тоталы'
-    elif markets_table_name.find('Победа с учетом форы') != -1 or markets_table_name.find('Победа с учетом азиатской форы') != -1:
-        shortcut_name = 'Форы'
+    if markets_table_name is not None:
+        if markets_table_name.find('Тотал голов') != -1 or markets_table_name.find('Азиатский тотал голов') != -1:
+            shortcut_name = 'Тоталы'
+        elif markets_table_name.find('Победа с учетом форы') != -1 or markets_table_name.find('Победа с учетом азиатской форы') != -1:
+            shortcut_name = 'Форы'
 
     for table in webdriver_mar.find_elements_by_tag_name('table'):
         if table.get_attribute('class') == 'table-shortcuts-menu':
@@ -425,7 +429,8 @@ def find_market_in_the_main_bar(main_bar, evnt, winner, total, handicap, win_or_
     return market
 
 
-def sort_market_table_by_teamnumb(lst, team_num):
+def sort_market_table_by_teamnum(lst, team_num):
+    logging.info('sort_market_table_by_teamnumb: start')
     team_num = int(team_num)
     new_lst = []
     if team_num == 1:
@@ -434,7 +439,7 @@ def sort_market_table_by_teamnumb(lst, team_num):
     if team_num == 2:
         for i in range(1, len(lst), 2):
             new_lst.append(lst[i])
-    logging.info('sort_market_table_by_teamnumb: create new list (teams/under/over)')
+    logging.info('sort_market_table_by_teamnumb: create new list (teams/under/over). stop')
     return new_lst
 
 
@@ -475,17 +480,15 @@ def change_language(webdriver_mar):
     wait_2 = WebDriverWait(webdriver_mar, 2)
     logging.info('change_language: start')
 
-    close_bk_message(webdriver_mar)
-
     lang_settings_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]')))
     lang_settings_button.click()
     logging.info('change_language: found and click change language button')
     time.sleep(1)
 
     close_bk_message(webdriver_mar)
+    close_promo_message(webdriver_mar)
 
-    languages_rus_button = wait_2.until(
-        ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]/div[2]/div/div[2]/span[6]/span[2]')))
+    languages_rus_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]/div[2]/div/div[2]/span[6]/span[2]')))
     languages_rus_button.click()
     logging.info('change_language: found and click change russian language button')
     time.sleep(1)
@@ -505,23 +508,22 @@ def start_marathon_bot(events_queue, email_message_queue):
     logging.info("Marathon's page is open")
 
     log_in_marathonbet_account(webdriver_mar, email_message_queue)  # вход в аккаунт
+    webdriver_mar.refresh()
+    time.sleep(3)
 
     close_bk_message(webdriver_mar)  # закрытие уведомления от букмекера
     close_promo_message(webdriver_mar)  # закрытие рекламного уведомления от букмекера
 
     change_language(webdriver_mar)  # сменить язык на русский
+    webdriver_mar.refresh()
+    time.sleep(3)
 
-    close_bk_message(webdriver_mar)  # закрытие уведомления от букмекера
-    close_promo_message(webdriver_mar)  # закрытие рекламного уведомления от букмекера
+    move_bets_history()
+    events_dict = {}
+    # TODO в очередь положить события, которые могут быть еще "сыграны"
 
     datenow = None
     event = None
-    events_dict = {}
-
-    move_bets_history(events_dict)
-    # events_dict = move_bets_history(events_dict)
-    # TODO в очередь положить события, которые могут быть еще "сыграны"
-
     while True:
         if event is not None:
             if event['status'] == STATUS_BET_ACCEPTED:
@@ -541,7 +543,6 @@ def start_marathon_bot(events_queue, email_message_queue):
         else:
             event = events_queue.get()
             logging.info(f'Get event {event["date_message_send"]} from QUEUE, coeff: {event["coeff"]}')
-
             datenow = convert_date_into_seconds(datetime.now().strftime(DATE_FORMAT))
             diff_sec = datenow - convert_date_into_seconds(event['date_last_try'])
             if event['time_event_start'] is not None:
@@ -550,10 +551,9 @@ def start_marathon_bot(events_queue, email_message_queue):
                 diff_sec2 = convert_start_time_match_into_seconds('23:59') - datenow
             if event['date_last_try'] != '0000-00-00_00-00-00':
                 if (diff_sec < CONFIG_JSON["freq_update_sec"]) and (diff_sec2 > CONFIG_JSON['time_before_the_start']):
-                    # if (diff_sec > FREQ_UPDATE_SEC) or (diff_sec2 < TIME_BEFORE_THE_START):
                     # событие будет возвращено в очередь,
-                    # так как полчаса еще не прошло с момента последней попытки И
-                    # времени до начала события больше чем 15 минут
+                    # так как freq_update_sec еще не прошло с момента последней попытки И
+                    # времени до начала события больше чем time_before_the_start
                     event['desc'] = 'insufficient time difference, pls wait'
                     events_queue.put_nowait(event)
                     logging.info(f'{diff_sec}<{CONFIG_JSON["freq_update_sec"]} and {diff_sec2}>{CONFIG_JSON["time_before_the_start"]} = TRUE. Event put back')
@@ -565,8 +565,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 if diff_sec2 < CONFIG_JSON['time_before_the_start'] and event['desc'] != 'Event soon started':
                     event['desc'] = 'Event soon started'
                     logging.info('Event soon started')
-                elif datenow > convert_start_time_match_into_seconds(
-                        event['time_event_start']):  # TODO delete это возможно не нужно, понаблюдать
+                elif datenow > convert_start_time_match_into_seconds(event['time_event_start']):  # TODO delete это возможно не нужно, понаблюдать
                     event['desc'] = 'Event has already begun'
                     logging.info('No bet. Event has already begun')
                     continue
@@ -649,7 +648,6 @@ def start_marathon_bot(events_queue, email_message_queue):
                 event['status'] = STATUS_TYPE_NOT_DEFINED
                 continue
 
-            # market_poss = None
             if event['market_str'] is None and event['markets_table_name'] is None:
                 if market_value * 100 % 50 == 0:  # обычный тотал или фора
                     if total:
@@ -678,6 +676,7 @@ def start_marathon_bot(events_queue, email_message_queue):
 
         coupon_coeff = 0
         need_to_check_main_market_bar = True
+        need_to_check_big_market_bar = False
         while True:
             try:  # если в купоне есть событие(-ия), то купон будет очищен (теоретически в купоне не может быть больше чем 1 маркета)
                 # '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span'
@@ -690,47 +689,71 @@ def start_marathon_bot(events_queue, email_message_queue):
                 pass
 
             if need_to_check_main_market_bar:
-                main_market_bar = get_main_market_table(webdriver_mar)
-                market = find_market_in_the_main_bar(main_market_bar, event, winner, total, handicap, win_or_draw)
-                if market is not None and market.text.find(market_str) != -1:
-                    market.click()
-                    logging.info(f'Click on market: {market.text}')
-                    time.sleep(1)
-                    break
+                market = find_market_in_the_main_bar(get_main_market_table(webdriver_mar), event, winner, total, handicap, win_or_draw)
+                if market is not None:
+                    if market.text == '—':
+                        logging.info('market.text is "—"')
+                        need_to_check_main_market_bar = True
+                        need_to_check_big_market_bar = True
+                        break
+                    elif winner or win_or_draw:
+                        # эквивалентно event['market_str'] = Null
+                        market.click()
+                        logging.info(f'Market found and click: {market.text}')
+                        time.sleep(1)
+                        need_to_check_main_market_bar = True
+                        need_to_check_big_market_bar = False
+                    elif market.text.find(event['market_str']) != -1:
+                        market.click()
+                        logging.info(f'Market found and click: {market.text}')
+                        time.sleep(1)
+                        need_to_check_main_market_bar = True
+                        need_to_check_big_market_bar = False
+                    else:
+                        need_to_check_big_market_bar = True
+                        logging.info('not foundnd market str in market')
                 else:
                     need_to_check_main_market_bar = False
+                    need_to_check_big_market_bar = True
 
-            show_more_markets_or_do_nothing(webdriver_mar)
-            markets_list.extend(get_markets_table_by_name(webdriver_mar, markets_table_name))
-            if len(markets_list) == 0:  # TODO быдлокод
-                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                event['status'] = STATUS_MARKET_NOT_FOUND
-                events_queue.put_nowait(event)
-                logging.info('Put event in QUEUE')
-                logging.info('Market not found')
-                break
-            winner_team_markets = sort_market_table_by_teamnumb(markets_list, event['winner_team'])
-            if len(winner_team_markets) == 0:  # TODO быдлокод
-                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                event['status'] = STATUS_MARKET_NOT_FOUND
-                events_queue.put_nowait(event)
-                logging.info('Put event in QUEUE')
-                logging.info('Market not found')
-                break
-            while len(winner_team_markets) != 0:  # TODO быдлокод
-                market = winner_team_markets.pop()
-                if market.text.find(market_str) != -1:
-                    logging.info(f'Market found: {market.text}')
-                    market.click()
-                    logging.info(f'Click on market: {market.text}')
-                    time.sleep(1)
+            if need_to_check_big_market_bar:
+                show_more_markets_or_do_nothing(webdriver_mar)
+                markets_list.extend(get_markets_table_by_name(webdriver_mar, event['markets_table_name']))
+                if len(markets_list) == 0:  # TODO быдлокод
+                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                    event['status'] = STATUS_MARKET_NOT_FOUND
+                    events_queue.put_nowait(event)
+                    logging.info('Put event in QUEUE')
+                    logging.info('Market not found')
                     break
-            else:
-                event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-                event['status'] = STATUS_MARKET_NOT_FOUND
-                events_queue.put_nowait(event)
-                logging.info('Put event in QUEUE')
-                logging.info('Market not found')
+                winner_team_markets = sort_market_table_by_teamnum(markets_list, event['winner_team'])
+                if len(winner_team_markets) == 0:  # TODO быдлокод
+                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                    event['status'] = STATUS_MARKET_NOT_FOUND
+                    events_queue.put_nowait(event)
+                    logging.info('Put event in QUEUE')
+                    logging.info('Market not found. len(winner_team_markets)  is 0')
+                    break
+                while len(winner_team_markets) != 0:  # TODO быдлокод
+                    market = winner_team_markets.pop()
+                    if market.text.find(event['market_str']) != -1:
+                        market.click()
+                        bl = True
+                        logging.info(f'Market found and click: {market.text}')
+                        time.sleep(1)
+                        break
+                else:
+                    event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+                    event['status'] = STATUS_MARKET_NOT_FOUND
+                    events_queue.put_nowait(event)
+                    logging.info('Put event in QUEUE')
+                    logging.info('Not found market in the big bar')
+                    break
+                if bl is not None and bl:
+                    break
+
+            if event['status'] == STATUS_MARKET_NOT_FOUND:
+                logging.info('ALARM WTF')
                 break
 
             # ищем значение коэф-та в купоне P.S. не работает с двумя и более выборами в одном купоне
@@ -740,6 +763,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 logging.info('ALARM! Dont know what is it')
                 webdriver_mar.refresh()
                 logging.info('Refresh page')
+                time.sleep(2)
                 continue
             try:
                 coupon_coeff = float(coupon_coeff.text[coupon_coeff.text.find(':') + 2:])
@@ -751,7 +775,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 time.sleep(1)
                 logging.info('Coupon coeff will be updated in coupon')
                 webdriver_mar.refresh()
-
+                time.sleep(2)
                 try:
                     search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
                 except TimeoutException:
@@ -763,14 +787,13 @@ def start_marathon_bot(events_queue, email_message_queue):
                 search_sport_tab_button.click()
                 logging.info('search_event_by_teams: Search sports tab button found and click')
                 time.sleep(2)
-
-                logging.info('Refresh page')
                 continue
 
-            event['history_coeff'].append(datetime.now().strftime('%H:%M:%S'))
-            event['history_coeff'].append(coupon_coeff)
-            event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
-            event['status'] = 'Found coupon coeff'
+            # event['history_coeff'].append(datetime.now().strftime('%H:%M:%S'))
+            # event['history_coeff'].append(coupon_coeff)
+            # event['coupon_coeff'] = coupon_coeff
+            # event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
+            # event['status'] = 'Found coupon coeff'
             break
 
         if event['status'] == STATUS_MARKET_NOT_FOUND:
@@ -780,6 +803,9 @@ def start_marathon_bot(events_queue, email_message_queue):
             # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
             event['date_last_try'] = datetime.now().strftime(DATE_FORMAT)
             event['status'] = STATUS_NOT_TRY_COUPON_COEFF
+            event['coupon_coeff'] = coupon_coeff
+            event['history_coeff'].append(datetime.now().strftime('%H:%M:%S'))
+            event['history_coeff'].append(coupon_coeff)
             events_queue.put_nowait(event)
             logging.info('Not try coupon coeff')
             logging.info('Put event in QUEUE')
@@ -823,7 +849,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         event['date_bet_accept'] = datetime.now().strftime(DATE_FORMAT)
         event['status'] = STATUS_BET_ACCEPTED
         logging.info('Bet accepted')
-        time.sleep(5)  # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе экспоненчиального закона
+        time.sleep(5)  # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе какого-нибудь закона
 
 
 def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
@@ -877,10 +903,6 @@ def get_text_TGmessages(message):
         TELEGRAM_BOT.send_message(message.chat.id, f'bot{CONFIG_JSON["bot_id"]} вас не понимает')
 
 
-def botbot():  # TODO не получилось передать в процесс очередь, поэтому делать тупо через полинг в мэйне
-    TELEGRAM_BOT.polling(none_stop=True, interval=0)
-
-
 def main():
     proc_marathon_bot = Process(target=start_marathon_bot, name='start_marathon_bot', args=(EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
     proc_marathon_bot.start()
@@ -888,7 +910,7 @@ def main():
     # proc_message_to_mail.start()
     # Process(target=controller, name='controller', args=(proc_marathon_bot, proc_message_to_mail,)).start()
     # Process(target=botbot, name='botbot', args=()).start()
-    TELEGRAM_BOT.polling(none_stop=True, interval=0)  # TODO не получилось передать в процесс очередь, поэтому делать тупо через полинг в мэйне
+    TELEGRAM_BOT.polling(none_stop=True, interval=1)  # TODO не получилось передать в процесс очередь, поэтому делать тупо через полинг в мэйне
 
 
 if __name__ == "__main__":  # хз зачем это, скопировал из прошлого проекта
