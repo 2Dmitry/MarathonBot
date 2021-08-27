@@ -1,0 +1,18 @@
+# ==================<Кнопки и поля, которые есть в бк MarathonBet>===================
+EXIT_BUTTON_CLASS = 'marathon_icons-exit_icon'
+USERNAME_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__input'
+PASSWORD_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__password'
+SIGN_IN_BUTTON_CLASS = 'form__element.auth-form__submit.auth-form__enter.green'
+CLOSE_BK_MESSAGE_BUTTON_CLASS = 'button.btn-cancel.no.simplemodal-close'
+CLOSE_PROMO_MESSAGE_BUTTON_CLASS = 'v-icon.notranslate.prevent-page-leave-modal-button.v-icon--link.v-icon--auto-fill'
+SEARCH_ICON_BUTTON_CLASS = 'search-widget_button--toggle.main'
+SEARCH_ICON_BUTTON_XPATH = '//*[@id="header_container"]/div/div/div[1]/div[2]/div[2]/div/div[2]/div/button'
+SEARCH_FIELD_CLASS = 'search-widget_input'
+SEARCH_ENTER_BUTTON_XPATH = '//*[@id="header_container"]/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/div[1]/div/button[1]'
+SEARCH_SPORTS_TAB_BUTTON_XPATH = '//*[@id="search-result-container"]/div[1]/div/button[3]/span'
+EVENT_MORE_BUTTON_CLASS = 'event-more-view'
+STAKE_FIELD_CLASS = 'stake.stake-input.js-focusable'
+STAKE_ACCEPT_BUTTON_XPATH = '//*[@id="betslip_placebet_btn_id"]'
+CATEGORY_CLASS = 'category-label-link'
+ALL_MARKETS_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'
+# ==================</Кнопки и поля, которые есть в бк MarathonBet>=================

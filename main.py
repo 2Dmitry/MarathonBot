@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from multiprocessing import Process, Queue
 
+import selenium
 import telebot
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
@@ -15,10 +16,8 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 from src.event import EVENT_STATUS, Event
+from src.page_elements import *
 from src.utils import get_driver
-
-# from telebot import types  # Подключаем библиотеку для создания кнопок
-
 
 # ==============================<Глобальные переменные>==============================
 EVENTS_QUEUE = Queue()
@@ -41,37 +40,6 @@ MASTERS = ['milovdd@mail.ru', 'pozdnyakov.aleksey.m@gmail.com',
            'panamanagolve@gmail.com']
 # ==============================</EMAIL>=============================
 
-# ==================<Кнопки и поля, которые есть в бк MarathonBet>===================
-EXIT_BUTTON_CLASS = 'marathon_icons-exit_icon'
-USERNAME_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__input'
-PASSWORD_FIELD_CLASS = 'form__element.form__element--br.form__input.auth-form__password'
-SIGN_IN_BUTTON_CLASS = 'form__element.auth-form__submit.auth-form__enter.green'
-CLOSE_BK_MESSAGE_BUTTON_CLASS = 'button.btn-cancel.no.simplemodal-close'
-CLOSE_PROMO_MESSAGE_BUTTON_CLASS = 'v-icon.notranslate.prevent-page-leave-modal-button.v-icon--link.v-icon--auto-fill'
-SEARCH_ICON_BUTTON_CLASS = 'search-widget_button--toggle.main'
-SEARCH_ICON_BUTTON_XPATH = '//*[@id="header_container"]/div/div/div[1]/div[2]/div[2]/div/div[2]/div/button'
-SEARCH_FIELD_CLASS = 'search-widget_input'
-SEARCH_ENTER_BUTTON_XPATH = '//*[@id="header_container"]/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/div[1]/div/button[1]'
-SEARCH_SPORTS_TAB_BUTTON_XPATH = '//*[@id="search-result-container"]/div[1]/div/button[3]/span'
-EVENT_MORE_BUTTON_CLASS = 'event-more-view'
-STAKE_FIELD_CLASS = 'stake.stake-input.js-focusable'
-STAKE_ACCEPT_BUTTON_XPATH = '//*[@id="betslip_placebet_btn_id"]'
-CATEGORY_CLASS = 'category-label-link'
-ALL_MARKETS_BUTTON_FPATH = '/html/body/div[12]/div/div[3]/div/div/div[1]/div[1]/div[1]/div/div/div/div[3]/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div[2]/div[2]/div/div[1]/table/tbody/tr[1]/td[1]'
-# ==================</Кнопки и поля, которые есть в бк MarathonBet>=================
-
-
-
-# event = {'status': EVENT_STATUS.NEW,
-#              'id': None,
-#              'date_message_send': tg_message_unixdate,
-#              'date_added': datetime.now().strftime(DATE_FORMAT),
-#              'date_bet_accept': None,
-#              'date_last_try': '0000-00-00_00-00-00',
-#              'time_event_start': None,
-#              'processing_time': None,
-#              'desc': None,
-#              'sport': text[:text.find(';')]}
 
 os.makedirs(LOGS_PATH, exist_ok=True)  # создаем необходимые папки
 os.makedirs(BETS_PATH, exist_ok=True)  # создаем необходимые папки
@@ -99,6 +67,7 @@ except FileNotFoundError as e:
 # инициализировать строго после чтения конфиг файла
 TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])
 # ==================</Телеграм бот>=====================================================
+
 
 def move_bets_history():
     """читаем историю ставок, если файл найден, значит у бота есть стартовая инфа"""
@@ -146,32 +115,6 @@ def convert_start_time_match_into_seconds(text):
     return summ_seconds
 
 
-def parse_TGmessage_with_event(text: str, tg_message_unixdate: datetime):
-    event = Event(text, tg_message_unixdate)
-    # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
-    text = text[text.find(';') + 2:]
-    # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
-    event.league = text[text.find(':') + 2:text.find(';')]
-    text = text[text.find(';') + 2:]  # Ранхейм vs Фредрикстад: O(1)=1.57;
-    # Ранхейм vs Фредрикстад: O(1)=1.57;
-    event.team1 = text[:text.find(' vs ')]
-    # Ранхейм vs Фредрикстад: O(1)=1.57;
-    event.team2 = text[text.find(' vs ') + 4:text.find(':')]
-    text = text[text.find(':') + 2:]  # O(1)=1.57;
-    event.type = text[:text.find('=')]  # O(1)=1.57;
-    event.markets_table_name = None
-    event.winner_team = None
-    event.market_str = None
-    event.coeff = float(
-        text[text.find('=') + 1:text.find(';')])  # O(1)=1.57;
-    event.coupon_coeff = None
-    event.history_coeff = []
-    logging.info(f'Bot takes event: {event.date_message_send}')
-    print(event)
-    print('\n')
-    return event
-
-
 def update_config_file():  # TODO delete: not use
     with open('config.json', 'w', encoding=ENCODING) as f:
         json.dump(CONFIG_JSON, f, indent=1)
@@ -179,6 +122,9 @@ def update_config_file():  # TODO delete: not use
 
 
 def log_in_marathonbet_account(webdriver_mar, email_message_queue):
+    """
+        вход в аккаунт
+    """
     logging.info('login: start')
 
     wait_2 = WebDriverWait(webdriver_mar, 2)
@@ -188,8 +134,9 @@ def log_in_marathonbet_account(webdriver_mar, email_message_queue):
     try:
         wait_2.until(ec.element_to_be_clickable(
             (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
-        logging.info('login: Exit button found: no need to login')
-        logging.info('login: stop')
+        logging.info('login: Exit button found: no need to login\n\
+            login: stop')
+        logging.info()
         return
     except TimeoutException:
         username_field = wait_3.until(ec.element_to_be_clickable(
@@ -220,20 +167,22 @@ def log_in_marathonbet_account(webdriver_mar, email_message_queue):
         try:
             wait_2.until(ec.element_to_be_clickable(
                 (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
-            logging.info('login: Google reCaptcha solved')
-            logging.info('login: stop')
+            logging.info('login: Google reCaptcha solved\nlogin: stop')
+            logging.info()
             time.sleep(5)
             return
         except TimeoutException:
             if True:  # TODO
                 msg = f'd{datetime.now().strftime(DATE_FORMAT)} - Google captcha. I can not log in to your account for more than 3 minutes.'
                 email_message_queue.put_nowait(msg)
-                logging.info(
-                    f'd{datetime.now().strftime(DATE_FORMAT)} - Google captcha. I can not log in to your account for more than 3 minutes.')
+                logging.info(msg)
             pass
 
 
 def close_bk_message(webdriver_mar):
+    """
+        закрытие уведомления от букмекера
+    """
     logging.info('close_bk_message: start')
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
@@ -246,13 +195,16 @@ def close_bk_message(webdriver_mar):
         # TODO может ли быть два окна подряд? хз..хз...
         logging.info('close_bk_message: stop')
         return
-    
+
     message_close_button.click()
     logging.info('close_bk_message: Close message button found and click')
     logging.info('close_bk_message: stop')
 
 
 def close_promo_message(webdriver_mar):
+    """
+        закрытие рекламного уведомления от букмекера
+    """
     logging.info('close_promo_message: start')
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
@@ -267,11 +219,11 @@ def close_promo_message(webdriver_mar):
         return
     message_close_button.click()
     logging.info(
-        'close_promo_message: Close promo message button found and click')
-    logging.info('close_promo_message: stop')
+        'close_promo_message: Close promo message button found and click\n\
+        close_promo_message: stop')
 
 
-def search_event_by_teams(webdriver_mar, event):
+def search_event_by_teams(webdriver_mar, event: Event):
     logging.info('search_event_by_teams: start')
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
@@ -279,7 +231,8 @@ def search_event_by_teams(webdriver_mar, event):
         teams = event.team1
     elif event.sport == 'Футбол' or event.sport == 'Хоккей':
         teams = event.team1 + ' - ' + event.team2
-    else:  # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
+    else:
+        # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
         # надо просто изменить значение его полей и при заходе на новый цикл информация в файле bets будет обновлена
         logging.info('Event sport not defined')
         event.date_last_try = datetime.now().strftime(DATE_FORMAT)
@@ -313,9 +266,9 @@ def search_event_by_teams(webdriver_mar, event):
         event.status = EVENT_STATUS.NO_SEARCH_RESULTS
         # не найдено ни одного матча соответствующего поиску
         logging.info(
-            'search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')
+            'search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found\n\
+            search_event_by_teams: stop')
         # TODO ну тут надо сделать уведомление, что ниче не найдено
-        logging.info('search_event_by_teams: stop')
         return False
     search_sport_tab_button.click()
     logging.info(
@@ -483,6 +436,7 @@ def collect_total_str(text, total_value):
 
 
 def change_language(webdriver_mar):
+    """сменить язык на русский"""
     wait_2 = WebDriverWait(webdriver_mar, 2)
     logging.info('change_language: start')
 
@@ -517,15 +471,14 @@ def start_marathon_bot(events_queue, email_message_queue):
     logging.info("Marathon's page is open")
 
     log_in_marathonbet_account(
-        webdriver_mar, email_message_queue)  # вход в аккаунт
+        webdriver_mar, email_message_queue)
     webdriver_mar.refresh()
     time.sleep(3)
 
-    close_bk_message(webdriver_mar)  # закрытие уведомления от букмекера
-    # закрытие рекламного уведомления от букмекера
+    close_bk_message(webdriver_mar)
     close_promo_message(webdriver_mar)
+    change_language(webdriver_mar)
 
-    change_language(webdriver_mar)  # сменить язык на русский
     webdriver_mar.refresh()
     time.sleep(3)
 
@@ -596,27 +549,35 @@ def start_marathon_bot(events_queue, email_message_queue):
         handicap = False
         win_or_draw = False
         if event.winner_team is None:
+
             if event.type[0] == 'W':  # W1 / W2
                 winner = True
                 event.winner_team = int(event.type[1])
+
             elif (event.type[0] == '1' or event.type[0] == '2') and len(event.type) == 1:  # 1 / 2
                 winner = True
                 event.type = 'W' + event.type[0]
                 event.winner_team = int(event.type[1])
+
             elif event.type[:2] == '1X':  # 1X
                 win_or_draw = True
                 event.winner_team = 1
+
             elif event.type[:2] == 'X2':  # X2
                 win_or_draw = True
                 event.winner_team = 2
+
             elif event.type[0] == 'U':  # U(?.??)
                 total = True
                 event.winner_team = 1
+
             elif event.type[0] == 'O':  # O(?.??)
                 total = True
                 event.winner_team = 2
+
             elif event.type[:2] == 'AH':  # AH1(?.??) / AH2(?.??)
                 handicap = True
+
                 if event.type[2] == '1' or event.type[2] == '2':
                     event.winner_team = int(event.type[2])
                 else:
@@ -625,7 +586,9 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.TYPE_NOT_DEFINED
                     continue
-            else:  # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
+
+            else:
+                # событие не надо обратно класть в очередь, оно было удалено из очереди, надо просто записать его в историю ставок
                 logging.info('Event type not defined')
                 # TODO писать сообщение в конфу, что тип события не определен
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
@@ -639,7 +602,8 @@ def start_marathon_bot(events_queue, email_message_queue):
             try:
                 event_id = webdriver_mar.find_element_by_class_name(
                     CATEGORY_CLASS).get_attribute('href')
-            except NoSuchElementException as e:  # если событие не найдено через строку поиска, то перейти к следующему
+            except NoSuchElementException as e:
+                # если событие не найдено через строку поиска, то перейти к следующему
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 event.status = 'Event isnot on the Sports tab'
                 logging.info('Event isnot on the Sports tab')
@@ -661,6 +625,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         markets_list = []
         markets_table_name = None
         market_str = None
+
         if total or handicap:
             try:
                 market_value = float(
@@ -689,10 +654,13 @@ def start_marathon_bot(events_queue, email_message_queue):
                         markets_table_name = 'Победа с учетом азиатской форы'
                 event.market_str = market_str
                 event.markets_table_name = markets_table_name
+
             if market_str is None:
-                logging.info('cant convert event type into market_str')
-                event.desc = 'cant convert event type into market_str'
+                tmp = 'cant convert event type into market_str'
+                logging.info(tmp)
+                event.desc = tmp
                 continue
+
             if markets_table_name is None:
                 logging.info('cant set markets_table_name')
                 event.desc = 'cant set markets_table_name'
@@ -717,12 +685,14 @@ def start_marathon_bot(events_queue, email_message_queue):
             if need_to_check_main_market_bar:
                 market = find_market_in_the_main_bar(get_main_market_table(
                     webdriver_mar), event, winner, total, handicap, win_or_draw)
+
                 if market is not None:
                     if market.text == '—':
                         logging.info('market.text is "—"')
                         need_to_check_main_market_bar = True
                         need_to_check_big_market_bar = True
                         break
+
                     elif winner or win_or_draw:
                         # эквивалентно event.market_str = Null
                         market.click()
@@ -730,12 +700,14 @@ def start_marathon_bot(events_queue, email_message_queue):
                         time.sleep(1)
                         need_to_check_main_market_bar = True
                         need_to_check_big_market_bar = False
+
                     elif market.text.find(event.market_str) != -1:
                         market.click()
                         logging.info(f'Market found and click: {market.text}')
                         time.sleep(1)
                         need_to_check_main_market_bar = True
                         need_to_check_big_market_bar = False
+
                     else:
                         need_to_check_big_market_bar = True
                         logging.info('not foundnd market str in market')
@@ -747,6 +719,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 show_more_markets_or_do_nothing(webdriver_mar)
                 markets_list.extend(get_markets_table_by_name(
                     webdriver_mar, event.markets_table_name))
+
                 if len(markets_list) == 0:  # TODO быдлокод
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_NOT_FOUND
@@ -754,8 +727,10 @@ def start_marathon_bot(events_queue, email_message_queue):
                     logging.info('Put event in QUEUE')
                     logging.info('Market not found')
                     break
+
                 winner_team_markets = sort_market_table_by_teamnum(
                     markets_list, event.winner_team)
+
                 if len(winner_team_markets) == 0:  # TODO быдлокод
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_NOT_FOUND
@@ -764,6 +739,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                     logging.info(
                         'Market not found. len(winner_team_markets)  is 0')
                     break
+
                 while len(winner_team_markets) != 0:  # TODO быдлокод
                     market = winner_team_markets.pop()
                     if market.text.find(event.market_str) != -1:
@@ -779,6 +755,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                     logging.info('Put event in QUEUE')
                     logging.info('Not found market in the big bar')
                     break
+
                 if bl is not None and bl:
                     break
 
@@ -809,6 +786,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 logging.info('Coupon coeff will be updated in coupon')
                 webdriver_mar.refresh()
                 time.sleep(2)
+
                 try:
                     search_sport_tab_button = wait_5.until(
                         ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
@@ -820,6 +798,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                     # TODO ну тут надо сделать уведомление, что ниче не найдено
                     logging.info('search_event_by_teams: stop')
                     return False
+
                 search_sport_tab_button.click()
                 logging.info(
                     'search_event_by_teams: Search sports tab button found and click')
@@ -885,7 +864,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         webdriver_mar.refresh()
         event.coupon_coeff = coupon_coeff
         event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-        event.date_bet_accept= datetime.now().strftime(DATE_FORMAT)
+        event.date_bet_accept = datetime.now().strftime(DATE_FORMAT)
         event.status = EVENT_STATUS.BET_ACCEPTED
         logging.info('Bet accepted')
         # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе какого-нибудь закона
@@ -923,25 +902,30 @@ def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
 def get_text_TGmessages(message):
     if message.text == 'bot id':
         TELEGRAM_BOT.send_message(message.chat.id, CONFIG_JSON["bot_id"])
+
     elif ';' in message.text:  # если пришло именно событие в сообщении, значит после вида спорта должна обязательно стоять ";"
-        event = parse_TGmessage_with_event(message.text, message.date)
+        event = Event(message.text, message.date)
         EVENTS_QUEUE.put_nowait(event)
         logging.info('Put event in QUEUE')
         TELEGRAM_BOT.send_message(
             message.chat.id, f'bot{CONFIG_JSON["bot_id"]} получил событие')
+
     elif message.text == 'start' or message.text == f'bot{CONFIG_JSON["bot_id"]} start':
         qwerty = PROC_STATUS_QUELIST.get()
         qwerty['browser_bot_run'] = True
         qwerty['mail_bot_run'] = True
         PROC_STATUS_QUELIST.put(qwerty)
+
     elif message.text == 'stop browser' or message.text == f'bot{CONFIG_JSON["bot_id"]} stop browser':
         qwerty = PROC_STATUS_QUELIST.get()
         qwerty['browser_bot_stop'] = True
         PROC_STATUS_QUELIST.put(qwerty)
+
     elif message.text == 'stop email' or message.text == f'bot{CONFIG_JSON["bot_id"]} stop email':
         qwerty = PROC_STATUS_QUELIST.get()
         qwerty['mail_bot_stop'] = True
         PROC_STATUS_QUELIST.put(qwerty)
+
     else:
         TELEGRAM_BOT.send_message(
             message.chat.id, f'bot{CONFIG_JSON["bot_id"]} вас не понимает')
