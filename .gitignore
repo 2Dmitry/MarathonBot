@@ -2,3 +2,7 @@ build/
 workdir/
 dist/
 bets.json
+src/__pycache__/__init__.cpython-39.pyc
+.gitignore
+src/__pycache__/event.cpython-39.pyc
+src/utils/__pycache__/__init__.cpython-39.pyc
