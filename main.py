@@ -7,6 +7,7 @@ import smtplib
 import time
 from datetime import datetime
 from multiprocessing import Process, Queue
+from typing import Union, Any
 
 import selenium
 import telebot
@@ -18,6 +19,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from src.event import EVENT_STATUS, Event
 from src.page_elements import *
 from src.utils import get_driver
+
+# BUG:бот не работает если свернута кнопка купона
+# BUG бот считает что ставка принята, когда ты не в аккаунте
+# BUG фаил с историей ставок не удаляется, из-за чего бот не запускается после ошибки вывода
+
 
 # ==============================<Глобальные переменные>==============================
 EVENTS_QUEUE = Queue()
@@ -69,7 +75,7 @@ TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])
 # ==================</Телеграм бот>=====================================================
 
 
-def move_bets_history():
+def move_bets_history() -> dict:
     """читаем историю ставок, если файл найден, значит у бота есть стартовая инфа"""
     event_dict = {}
     try:
@@ -85,7 +91,8 @@ def move_bets_history():
     return event_dict
 
 
-def convert_date_into_seconds(text):  # 08-08-2021_09-11-54
+def convert_date_into_seconds(text):  
+    # 08-08-2021_09-11-54
     text = text[text.find('-') + 1:]  # 08-2021_09-11-54
     text = text[text.find('-') + 1:]  # 2021_09-11-54
     text = text[text.find('_') + 1:]  # 09-11-54
@@ -121,62 +128,62 @@ def update_config_file():  # TODO delete: not use
         logging.info('Config file saved')
 
 
-def log_in_marathonbet_account(webdriver_mar, email_message_queue):
-    """
-        вход в аккаунт
-    """
-    logging.info('login: start')
+# def log_in_marathonbet_account(webdriver_mar, email_message_queue):
+#     """
+#         вход в аккаунт
+#     """
+#     logging.info('login: start')
 
-    wait_2 = WebDriverWait(webdriver_mar, 2)
-    wait_3 = WebDriverWait(webdriver_mar, 3)
-    wait_5 = WebDriverWait(webdriver_mar, 5)
+#     wait_2 = WebDriverWait(webdriver_mar, 2)
+#     wait_3 = WebDriverWait(webdriver_mar, 3)
+#     wait_5 = WebDriverWait(webdriver_mar, 5)
 
-    try:
-        wait_2.until(ec.element_to_be_clickable(
-            (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
-        logging.info('login: Exit button found: no need to login\n\
-            login: stop')
-        logging.info()
-        return
-    except TimeoutException:
-        username_field = wait_3.until(ec.element_to_be_clickable(
-            (By.CLASS_NAME, USERNAME_FIELD_CLASS)))
-        username_field.clear()
-        username_field.send_keys(CONFIG_JSON['username'])
-        logging.info('login: Username entered')
-        time.sleep(2)
+#     try:
+#         wait_2.until(ec.element_to_be_clickable(
+#             (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
+#         logging.info('login: Exit button found: no need to login\n\
+#             login: stop')
+#         logging.info()
+#         return
+#     except TimeoutException:
+#         username_field = wait_3.until(ec.element_to_be_clickable(
+#             (By.CLASS_NAME, USERNAME_FIELD_CLASS)))
+#         username_field.clear()
+#         username_field.send_keys(CONFIG_JSON['username'])
+#         logging.info('login: Username entered')
+#         time.sleep(2)
 
-    password_field = wait_5.until(ec.element_to_be_clickable(
-        (By.CLASS_NAME, PASSWORD_FIELD_CLASS)))
-    password_field.clear()
-    password_field.send_keys(CONFIG_JSON['password'])
-    logging.info('login: Password entered')
-    time.sleep(1)
+#     password_field = wait_5.until(ec.element_to_be_clickable(
+#         (By.CLASS_NAME, PASSWORD_FIELD_CLASS)))
+#     password_field.clear()
+#     password_field.send_keys(CONFIG_JSON['password'])
+#     logging.info('login: Password entered')
+#     time.sleep(1)
 
-    sign_in_button = wait_5.until(ec.element_to_be_clickable(
-        (By.CLASS_NAME, SIGN_IN_BUTTON_CLASS)))
-    sign_in_button.click()
-    logging.info('login: "Sign in" button found and click')
-    time.sleep(2)
+#     sign_in_button = wait_5.until(ec.element_to_be_clickable(
+#         (By.CLASS_NAME, SIGN_IN_BUTTON_CLASS)))
+#     sign_in_button.click()
+#     logging.info('login: "Sign in" button found and click')
+#     time.sleep(2)
 
     # не всегда просит капчу, не просит видимо тогда, когда с данного устройства (ВДС) и с данного IP уже заходили в данную учетку
     # TODO здесь добавить решение гугл-капчи
     # logging.info('login: Google reCaptcha solved')
 
-    while True:
-        try:
-            wait_2.until(ec.element_to_be_clickable(
-                (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
-            logging.info('login: Google reCaptcha solved\nlogin: stop')
-            logging.info()
-            time.sleep(5)
-            return
-        except TimeoutException:
-            if True:  # TODO
-                msg = f'd{datetime.now().strftime(DATE_FORMAT)} - Google captcha. I can not log in to your account for more than 3 minutes.'
-                email_message_queue.put_nowait(msg)
-                logging.info(msg)
-            pass
+    # while True:
+    #     try:
+    #         wait_2.until(ec.element_to_be_clickable(
+    #             (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
+    #         logging.info('login: Google reCaptcha solved\nlogin: stop')
+    #         logging.info()
+    #         time.sleep(5)
+    #         return
+    #     except TimeoutException:
+    #         if True:  # TODO
+    #             msg = f'd{datetime.now().strftime(DATE_FORMAT)} - Google captcha. I can not log in to your account for more than 3 minutes.'
+    #             email_message_queue.put_nowait(msg)
+    #             logging.info(msg)
+    #         pass
 
 
 def close_bk_message(webdriver_mar):
@@ -353,36 +360,36 @@ def get_main_market_table(webdriver_mar):
     return
 
 
-def find_market_in_the_main_bar(main_bar, evnt, winner, total, handicap, win_or_draw):
+def find_market_in_the_main_bar(main_bar, event, winner, total, handicap, win_or_draw):
     market = None
-    if evnt['sport'] == 'Теннис':
+    if event.sport == 'Теннис':
         if winner:  # победа команды 1 / победа команды 2
-            if evnt['winner_team'] == 1:  # победа команды 1
+            if event.winner_team == 1:  # победа команды 1
                 market = main_bar[0]
-            elif evnt['winner_team'] == 2:  # победа команды 2
+            elif event.winner_team == 2:  # победа команды 2
                 market = main_bar[1]
-    elif evnt['sport'] == 'Футбол' or evnt['sport'] == 'Хоккей':
+    elif event.sport == 'Футбол' or event.sport == 'Хоккей':
         if winner:  # победа команды 1 / победа команды 2
-            if evnt['winner_team'] == 1:  # победа команды 1
+            if event.winner_team == 1:  # победа команды 1
                 market = main_bar[0]
-            elif evnt['winner_team'] == 2:  # победа команды 2
+            elif event.winner_team == 2:  # победа команды 2
                 market = main_bar[2]
         elif win_or_draw:  # 1X / X2
-            if evnt['winner_team'] == 1:  # 1X
+            if event.winner_team == 1:  # 1X
                 market = main_bar[3]
-            elif evnt['winner_team'] == 2:  # X2
+            elif event.winner_team == 2:  # X2
                 market = main_bar[5]
         # общий тотал  # TODO быдлокод
-        elif total and evnt['markets_table_name'] != 'Азиатский тотал голов':
-            if evnt['winner_team'] == 1:  # победа команды 1
+        elif total and event.markets_table_name!= 'Азиатский тотал голов':
+            if event.winner_team == 1:  # победа команды 1
                 market = main_bar[8]
-            elif evnt['winner_team'] == 2:  # победа команды 2
+            elif event.winner_team == 2:  # победа команды 2
                 market = main_bar[9]
         # общая фора  # TODO быдлокод
-        elif handicap and evnt['markets_table_name'] != 'Победа с учетом азиатской форы':
-            if evnt['winner_team'] == 1:  # победа команды 1
+        elif handicap and event.markets_table_name!= 'Победа с учетом азиатской форы':
+            if event.winner_team == 1:  # победа команды 1
                 market = main_bar[6]
-            elif evnt['winner_team'] == 2:  # победа команды 2
+            elif event.winner_team == 2:  # победа команды 2
                 market = main_bar[7]
     return market
 
@@ -470,8 +477,8 @@ def start_marathon_bot(events_queue, email_message_queue):
     webdriver_mar.get(CONFIG_JSON['marathon_mirror'])
     logging.info("Marathon's page is open")
 
-    log_in_marathonbet_account(
-        webdriver_mar, email_message_queue)
+    #log_in_marathonbet_account(
+    #    webdriver_mar, email_message_queue)
     webdriver_mar.refresh()
     time.sleep(3)
 
@@ -490,12 +497,12 @@ def start_marathon_bot(events_queue, email_message_queue):
     event = None
     while True:
         if event is not None:
-            if event.status == EVENT_STATUS.STATUS_BET_ACCEPTED:
+            if event.status == EVENT_STATUS.BET_ACCEPTED:
                 event.processing_time = convert_date_into_seconds(
                     event.date_last_try) - datenow
             key = event.team1 + ' - ' + event.team2 + \
                 ' - ' + str(event.date_message_send)
-            events_dict[key] = event
+            events_dict[key] = event.to_json()
             with open('bets.json', 'w', encoding=ENCODING) as f:
                 json.dump(events_dict, f, indent=1, ensure_ascii=False)
             logging.info('bets.json updated')
@@ -804,12 +811,6 @@ def start_marathon_bot(events_queue, email_message_queue):
                     'search_event_by_teams: Search sports tab button found and click')
                 time.sleep(2)
                 continue
-
-            # event.history_coeff.append(datetime.now().strftime('%H:%M:%S'))
-            # event.history_coeff.append(coupon_coeff)
-            # event.coupon_coeff = coupon_coeff
-            # event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-            # event.status = 'Found coupon coeff'
             break
 
         if event.status == EVENT_STATUS.MARKET_NOT_FOUND:
@@ -826,9 +827,6 @@ def start_marathon_bot(events_queue, email_message_queue):
             logging.info('Not try coupon coeff')
             logging.info('Put event in QUEUE')
             continue
-        # if (event.coeff * (100 - COEFF_DIFF_PERCENTAGE)/100) > coupon_coeff:  # запасной код на случай если понадобится сделать проценты
-        #     logging.info(f"NOT TRY coeff: {coupon_coeff} event_coeff: {event.coeff}")
-        #     continue
 
         try:
             stake_field = wait_5.until(ec.element_to_be_clickable(
@@ -883,17 +881,15 @@ def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
                     EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
                 proc_marathon_bot.start()
             proc_status['browser_bot_run'] = False
-        # if proc_status['mail_bot_run']:
-        #     if not proc_marathon_bot.is_alive():
-        #         proc_message_to_mail = Process(target=send_message_to_mail, name='send_message_to_mail', args=(EMAIL_MESSAGE_QUEUE,))
-        #         proc_message_to_mail.start()
-        #     proc_status['mail_bot_run'] = False
+
         if proc_status['browser_bot_stop']:
             proc_marathon_bot.terminate()
             proc_status['browser_bot_stop'] = False
+        
         if proc_status['mail_bot_stop']:
             proc_message_to_mail.terminate()
             proc_status['mail_bot_stop'] = False
+        
         PROC_STATUS_QUELIST.put_nowait(proc_status)
         time.sleep(2)
 
@@ -935,15 +931,10 @@ def main():
     proc_marathon_bot = Process(target=start_marathon_bot, name='start_marathon_bot', args=(
         EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
     proc_marathon_bot.start()
-    # proc_message_to_mail = Process(target=send_message_to_mail, name='send_message_to_mail', args=(EMAIL_MESSAGE_QUEUE,))
-    # proc_message_to_mail.start()
-    # Process(target=controller, name='controller', args=(proc_marathon_bot, proc_message_to_mail,)).start()
-    # Process(target=botbot, name='botbot', args=()).start()
-    # TODO не получилось передать в процесс очередь, поэтому делать тупо через полинг в мэйне
     TELEGRAM_BOT.polling(none_stop=True, interval=1)
 
 
-if __name__ == "__main__":  # хз зачем это, скопировал из прошлого проекта
+if __name__ == "__main__":
     multiprocessing.freeze_support()
     try:
         main()

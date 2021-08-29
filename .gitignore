@@ -1,7 +1,7 @@
 build/
 workdir/
 dist/
-bets.json
+*bets.json
 src/__pycache__
 .gitignore
 src/utils/__pycache__

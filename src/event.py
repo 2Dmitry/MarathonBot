@@ -12,12 +12,13 @@ class EVENT_STATUS(Enum):
     SPORT_NOT_DEFINED = 5
     MARKET_NOT_FOUND = 6
     NOT_TRY_COUPON_COEFF = 7
-    STATUS_BET_ACCEPTED = 8
-    def __str__(self):
+    BET_ACCEPTED = 8
+    def __str__(self) -> str:
         return self.name.lower().replace('_', ' ')
+    
 
 class Event:
-    def __init__(self, text: str, tg_message_unix_date: datetime):
+    def __init__(self, text: str, tg_message_unix_date: datetime) -> None:
         self.id = None
         self.date_bet_accept = None 
         self.time_event_start = None
@@ -37,7 +38,7 @@ class Event:
         self.__parse_text(text)
         print(self.__dict__, '\n')
 
-    def __parse_text(self, text : str):
+    def __parse_text(self, text : str) -> None:
         self.sport = text[:text.find(';')]
         # League: Norway - League 1; Ранхейм vs Фредрикстад: O(1)=1.57;
         text = text[text.find(';') + 2:]
@@ -52,3 +53,18 @@ class Event:
         self.type = text[:text.find('=')]  # O(1)=1.57;
         self.coeff = float(
             text[text.find('=') + 1:text.find(';')])  # O(1)=1.57;
+        
+    def __str__(self) -> str:
+        return self.__dict__.__str__()
+
+    def __repr__(self) -> str:
+        return self.__dict__
+
+    def to_json(self) -> dict:
+        logging.info(f"obj dict is {self.__dict__}")
+        json_dict = {}
+        for key, value in self.__dict__.items():
+            json_dict[key] = value
+            if isinstance(self.__dict__[key], EVENT_STATUS):
+                json_dict[key] = str(value)
+        return json_dict
