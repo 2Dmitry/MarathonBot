@@ -21,8 +21,9 @@ from src.page_elements import *
 from src.utils import get_driver
 
 # BUG:бот не работает если свернута кнопка купона
-# BUG бот считает что ставка принята, когда ты не в аккаунте
-# BUG фаил с историей ставок не удаляется, из-за чего бот не запускается после ошибки вывода
+# BUG: бот считает что ставка принята, когда ты не в аккаунте
+# BUG: фаил с историей ставок не удаляется, из-за чего бот не запускается после ошибки вывода
+
 
 
 # ==============================<Глобальные переменные>==============================
@@ -46,9 +47,9 @@ MASTERS = ['milovdd@mail.ru', 'pozdnyakov.aleksey.m@gmail.com',
            'panamanagolve@gmail.com']
 # ==============================</EMAIL>=============================
 
-
-os.makedirs(LOGS_PATH, exist_ok=True)  # создаем необходимые папки
-os.makedirs(BETS_PATH, exist_ok=True)  # создаем необходимые папки
+# создаем необходимые папки
+os.makedirs(LOGS_PATH, exist_ok=True)
+os.makedirs(BETS_PATH, exist_ok=True)
 
 logging.basicConfig(filename=LOGS_PATH + "/{}.log".format(datetime.now().strftime(DATE_FORMAT)),
                     format=u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s',
@@ -59,7 +60,9 @@ logging.getLogger('selenium.webdriver.remote.remote_connection').setLevel(
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.debug('Start')
 
-try:  # читаем конфиг файл  # TODO завернуть это в функцию
+# читаем конфиг файл
+# TODO: завернуть это в функцию
+try:    
     with open('config.json', encoding=ENCODING) as f:
         CONFIG_JSON = json.load(f)
         logging.info('Config file open')
@@ -74,7 +77,15 @@ except FileNotFoundError as e:
 TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])
 # ==================</Телеграм бот>=====================================================
 
+def logger_info_wrapper(func):
+    def func_wrapper(*args, **kwargs):
+        logging.info(f'enter to function {func.__name__}')
+        z = func(*args)
+        logging.info(f'out from function {func.__name__}')
+        return z
+    return func_wrapper
 
+@logger_info_wrapper
 def move_bets_history() -> dict:
     """читаем историю ставок, если файл найден, значит у бота есть стартовая инфа"""
     event_dict = {}
@@ -82,16 +93,17 @@ def move_bets_history() -> dict:
         with open('bets.json', encoding=ENCODING) as f:
             event_dict = json.load(f)
             logging.info('Bets history file open')
+            shutil.move('bets.json', BETS_PATH +
+                '/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
+        
     except FileNotFoundError:
         logging.info('Bets history file not found')
+
+    finally:    
         return event_dict
 
-    shutil.move('bets.json', BETS_PATH +
-                '/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
-    return event_dict
-
-
-def convert_date_into_seconds(text):  
+@logger_info_wrapper
+def convert_date_into_seconds(text):
     # 08-08-2021_09-11-54
     text = text[text.find('-') + 1:]  # 08-2021_09-11-54
     text = text[text.find('-') + 1:]  # 2021_09-11-54
@@ -108,7 +120,7 @@ def convert_date_into_seconds(text):
     summ_seconds = hours + minutes + seconds
     return summ_seconds
 
-
+@logger_info_wrapper
 def convert_start_time_match_into_seconds(text):
     if ' ' in text:  # если дата это строка такого рода: "1 авг 02:00"
         return 24 * 3600  # типа событие в 23:59 начинается
@@ -121,13 +133,12 @@ def convert_start_time_match_into_seconds(text):
     summ_seconds = hours * 3600 + minutes * 60
     return summ_seconds
 
-
+@logger_info_wrapper
 def update_config_file():  # TODO delete: not use
     with open('config.json', 'w', encoding=ENCODING) as f:
         json.dump(CONFIG_JSON, f, indent=1)
-        logging.info('Config file saved')
 
-
+# @logger_info_wrapper
 # def log_in_marathonbet_account(webdriver_mar, email_message_queue):
 #     """
 #         вход в аккаунт
@@ -185,12 +196,11 @@ def update_config_file():  # TODO delete: not use
     #             logging.info(msg)
     #         pass
 
-
-def close_bk_message(webdriver_mar):
+@logger_info_wrapper
+def close_bk_message(webdriver_mar) -> None:
     """
         закрытие уведомления от букмекера
     """
-    logging.info('close_bk_message: start')
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
     try:
@@ -198,21 +208,18 @@ def close_bk_message(webdriver_mar):
             (By.CLASS_NAME, CLOSE_BK_MESSAGE_BUTTON_CLASS)))
     except TimeoutException:
         # сообщений/уведомлений от букера нет, закрывать окно не надо
-        logging.info('close_bk_message: No message from a bookmaker')
         # TODO может ли быть два окна подряд? хз..хз...
-        logging.info('close_bk_message: stop')
+        logging.info('close_bk_message: No message from a bookmaker')
         return
 
     message_close_button.click()
     logging.info('close_bk_message: Close message button found and click')
-    logging.info('close_bk_message: stop')
 
-
-def close_promo_message(webdriver_mar):
+@logger_info_wrapper
+def close_promo_message(webdriver_mar) -> None:
     """
         закрытие рекламного уведомления от букмекера
     """
-    logging.info('close_promo_message: start')
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
     try:
@@ -229,14 +236,13 @@ def close_promo_message(webdriver_mar):
         'close_promo_message: Close promo message button found and click\n\
         close_promo_message: stop')
 
-
-def search_event_by_teams(webdriver_mar, event: Event):
-    logging.info('search_event_by_teams: start')
+@logger_info_wrapper
+def search_event_by_teams(webdriver_mar, event: Event) -> bool:
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     if event.sport == 'Теннис':  # найти собыйтие через поисковую строку, переключиться на вкладку "Спорт"  # TODO запихнуть это в if который ниже отвечает за поиск маркета
         teams = event.team1
-    elif event.sport == 'Футбол' or event.sport == 'Хоккей':
+    elif event.sport in ['Футбол', 'Хоккей']:
         teams = event.team1 + ' - ' + event.team2
     else:
         # событие не надо обратно класть в очередь, оно уже было удалено из очереди,
@@ -271,7 +277,6 @@ def search_event_by_teams(webdriver_mar, event: Event):
             ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException:
         event.status = EVENT_STATUS.NO_SEARCH_RESULTS
-        # не найдено ни одного матча соответствующего поиску
         logging.info(
             'search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found\n\
             search_event_by_teams: stop')
@@ -281,13 +286,10 @@ def search_event_by_teams(webdriver_mar, event: Event):
     logging.info(
         'search_event_by_teams: Search sports tab button found and click')
     time.sleep(2)
-
-    logging.info('search_event_by_teams: stop')
     return True
 
-
+@logger_info_wrapper
 def show_more_markets_or_do_nothing(webdriver_mar):
-    logging.info('show_more_markets_or_do_nothing: start')
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     try:
@@ -311,7 +313,7 @@ def show_more_markets_or_do_nothing(webdriver_mar):
     time.sleep(1)
     logging.info('show_more_markets_or_do_nothing: stop')
 
-
+@logger_info_wrapper
 def get_markets_table_by_name(webdriver_mar, markets_table_name):
     shortcut_name = 'Все выборы'
     if markets_table_name is not None:
@@ -359,7 +361,7 @@ def get_main_market_table(webdriver_mar):
     logging.info('get_main_market_table: got table with markets')
     return
 
-
+@logger_info_wrapper
 def find_market_in_the_main_bar(main_bar, event, winner, total, handicap, win_or_draw):
     market = None
     if event.sport == 'Теннис':
@@ -380,22 +382,21 @@ def find_market_in_the_main_bar(main_bar, event, winner, total, handicap, win_or
             elif event.winner_team == 2:  # X2
                 market = main_bar[5]
         # общий тотал  # TODO быдлокод
-        elif total and event.markets_table_name!= 'Азиатский тотал голов':
+        elif total and event.markets_table_name != 'Азиатский тотал голов':
             if event.winner_team == 1:  # победа команды 1
                 market = main_bar[8]
             elif event.winner_team == 2:  # победа команды 2
                 market = main_bar[9]
         # общая фора  # TODO быдлокод
-        elif handicap and event.markets_table_name!= 'Победа с учетом азиатской форы':
+        elif handicap and event.markets_table_name != 'Победа с учетом азиатской форы':
             if event.winner_team == 1:  # победа команды 1
                 market = main_bar[6]
             elif event.winner_team == 2:  # победа команды 2
                 market = main_bar[7]
     return market
 
-
+@logger_info_wrapper
 def sort_market_table_by_teamnum(lst, team_num):
-    logging.info('sort_market_table_by_teamnumb: start')
     team_num = int(team_num)
     new_lst = []
     if team_num == 1:
@@ -404,11 +405,9 @@ def sort_market_table_by_teamnum(lst, team_num):
     if team_num == 2:
         for i in range(1, len(lst), 2):
             new_lst.append(lst[i])
-    logging.info(
-        'sort_market_table_by_teamnumb: create new list (teams/under/over). stop')
     return new_lst
 
-
+@logger_info_wrapper
 def collect_handicap_str(text, handicap_value):
     if text == 'asia':
         if handicap_value < 0:
@@ -429,23 +428,20 @@ def collect_handicap_str(text, handicap_value):
         if handicap_value > 0:
             text = f'(+{handicap_value})'
         pass
-    logging.info('collect_handicap_str: collect handicap string')
     return text
 
-
+@logger_info_wrapper
 def collect_total_str(text, total_value):
     if text == 'asia':
         text = f'({total_value - 0.25},{total_value + 0.25})'
     elif text == 'simple':  # тотала 0 не бывает, минимум 0.5 и только положительный
         text = f'({total_value})'
-    logging.info('collect_total_str: collect total string')
     return text
 
-
+@logger_info_wrapper
 def change_language(webdriver_mar):
     """сменить язык на русский"""
     wait_2 = WebDriverWait(webdriver_mar, 2)
-    logging.info('change_language: start')
 
     lang_settings_button = wait_2.until(
         ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]')))
@@ -463,12 +459,8 @@ def change_language(webdriver_mar):
         'change_language: found and click change russian language button')
     time.sleep(1)
 
-    logging.info('change_language: stop')
-
-
 def start_marathon_bot(events_queue, email_message_queue):
     webdriver_mar = get_driver('/GoogleChrome', CONFIG_JSON['username'])
-    logging.info('Browser is open')
 
     wait_1 = WebDriverWait(webdriver_mar, 1)
     wait_2 = WebDriverWait(webdriver_mar, 2)
@@ -477,7 +469,7 @@ def start_marathon_bot(events_queue, email_message_queue):
     webdriver_mar.get(CONFIG_JSON['marathon_mirror'])
     logging.info("Marathon's page is open")
 
-    #log_in_marathonbet_account(
+    # log_in_marathonbet_account(
     #    webdriver_mar, email_message_queue)
     webdriver_mar.refresh()
     time.sleep(3)
@@ -868,7 +860,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         # TODO время ожидания после совершения ставки, сделать "рандомное" время на основе какого-нибудь закона
         time.sleep(5)
 
-
+@logger_info_wrapper
 def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
     proc_status = {'browser_bot_run': False, 'mail_bot_run': False,
                    'browser_bot_stop': False, 'mail_bot_stop': False}
@@ -885,15 +877,15 @@ def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
         if proc_status['browser_bot_stop']:
             proc_marathon_bot.terminate()
             proc_status['browser_bot_stop'] = False
-        
+
         if proc_status['mail_bot_stop']:
             proc_message_to_mail.terminate()
             proc_status['mail_bot_stop'] = False
-        
+
         PROC_STATUS_QUELIST.put_nowait(proc_status)
         time.sleep(2)
 
-
+@logger_info_wrapper
 @TELEGRAM_BOT.message_handler(content_types=['text'])
 def get_text_TGmessages(message):
     if message.text == 'bot id':
