@@ -92,9 +92,7 @@ def move_bets_history() -> dict:
         with open('bets.json', encoding=ENCODING) as f:
             event_dict = json.load(f)
             logging.info('Bets history file open')
-            shutil.move('bets.json', BETS_PATH +
-                '/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
-        
+            shutil.move('bets.json', BETS_PATH + '/bets_{}.json'.format(datetime.now().strftime('%d_%m_%Y_%H_%M_%S')))
     except FileNotFoundError:
         logging.info('Bets history file not found')
 
@@ -153,29 +151,24 @@ def log_in_marathonbet_account(webdriver_mar, email_message_queue):
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     try:
-        wait_2.until(ec.element_to_be_clickable(
-            (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
-        logging.info('login: Exit button found: no need to login\n\
-            login: stop')
-        logging.info()
+        wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
+        logging.info('login: Exit button found: no need to login')
+        logging.info('login: stop')
         return
     except TimeoutException:
-        username_field = wait_3.until(ec.element_to_be_clickable(
-            (By.CLASS_NAME, USERNAME_FIELD_CLASS)))
+        username_field = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, USERNAME_FIELD_CLASS)))
         username_field.clear()
         username_field.send_keys(CONFIG_JSON['username'])
         logging.info('login: Username entered')
         time.sleep(2)
 
-    password_field = wait_5.until(ec.element_to_be_clickable(
-        (By.CLASS_NAME, PASSWORD_FIELD_CLASS)))
+    password_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, PASSWORD_FIELD_CLASS)))
     password_field.clear()
     password_field.send_keys(CONFIG_JSON['password'])
     logging.info('login: Password entered')
     time.sleep(1)
 
-    sign_in_button = wait_5.until(ec.element_to_be_clickable(
-        (By.CLASS_NAME, SIGN_IN_BUTTON_CLASS)))
+    sign_in_button = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, SIGN_IN_BUTTON_CLASS)))
     sign_in_button.click()
     logging.info('login: "Sign in" button found and click')
     time.sleep(2)
@@ -186,10 +179,8 @@ def log_in_marathonbet_account(webdriver_mar, email_message_queue):
 
     while True:
         try:
-            wait_2.until(ec.element_to_be_clickable(
-                (By.CLASS_NAME, EXIT_BUTTON_CLASS)))
+            wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
             logging.info('login: Google reCaptcha solved\nlogin: stop')
-            logging.info()
             time.sleep(5)
             return
         except TimeoutException:
@@ -208,8 +199,7 @@ def close_bk_message(webdriver_mar) -> None:
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
     try:
-        message_close_button = wait_2.until(ec.element_to_be_clickable(
-            (By.CLASS_NAME, CLOSE_BK_MESSAGE_BUTTON_CLASS)))
+        message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_BK_MESSAGE_BUTTON_CLASS)))
     except TimeoutException:
         # сообщений/уведомлений от букера нет, закрывать окно не надо
         # TODO может ли быть два окна подряд? хз..хз...
@@ -228,18 +218,13 @@ def close_promo_message(webdriver_mar) -> None:
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
     try:
-        message_close_button = wait_2.until(
-            ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_PROMO_MESSAGE_BUTTON_CLASS)))
+        message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_PROMO_MESSAGE_BUTTON_CLASS)))
     except TimeoutException:
-        logging.info(
-            'close_promo_message: No promo message from a bookmaker')  # сообщений/уведомлений от букера нет, закрывать окно не надо
+        logging.info('close_promo_message: No promo message from a bookmaker')  # сообщений/уведомлений от букера нет, закрывать окно не надо
         # TODO может ли быть два окна подряд? хз..хз...
-        logging.info('close_promo_message: stop')
         return
     message_close_button.click()
-    logging.info(
-        'close_promo_message: Close promo message button found and click\n\
-        close_promo_message: stop')
+    logging.info('close_promo_message: Close promo message button found and click')
 
 
 @logger_info_wrapper
@@ -258,22 +243,18 @@ def search_event_by_teams(webdriver_mar, event: Event) -> bool:
         event.status = EVENT_STATUS.SPORT_NOT_DEFINED
         return False
 
-    search_icon_button = wait_5.until(
-        ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
+    search_icon_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ICON_BUTTON_XPATH)))
     search_icon_button.click()
     logging.info('search_event_by_teams: Search icon button found and click')
     time.sleep(3)
 
-    search_field = wait_5.until(ec.element_to_be_clickable(
-        (By.CLASS_NAME, SEARCH_FIELD_CLASS)))
+    search_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, SEARCH_FIELD_CLASS)))
     search_field.clear()
     search_field.send_keys(teams)
-    logging.info(
-        'search_event_by_teams: Search field found and click, event_name enter')
+    logging.info('search_event_by_teams: Search field found and click, event_name enter')
     time.sleep(3)
 
-    search_enter_button = wait_5.until(
-        ec.element_to_be_clickable((By.XPATH, SEARCH_ENTER_BUTTON_XPATH)))
+    search_enter_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_ENTER_BUTTON_XPATH)))
     search_enter_button.click()
     logging.info('search_event_by_teams: Search enter button found and click')
     time.sleep(3)
@@ -331,8 +312,7 @@ def get_markets_table_by_name(webdriver_mar, markets_table_name):
                 for element_from_shortcut_menu_row in shortcut_menu_row.find_elements_by_tag_name('td'):
                     if element_from_shortcut_menu_row.text.find(shortcut_name) != -1:
                         element_from_shortcut_menu_row.click()
-                        logging.info(
-                            'get_market_table_by_name: found and click on shortcut menu')
+                        logging.info('get_market_table_by_name: found and click on shortcut menu')
                         time.sleep(2)
                 break
 
@@ -342,8 +322,7 @@ def get_markets_table_by_name(webdriver_mar, markets_table_name):
             if market_table_name.text == markets_table_name:
                 for market in table.find_elements_by_tag_name('td'):
                     markets_list.append(market)
-                logging.info(
-                    'get_market_table_by_name: got table with markets')
+                logging.info('get_market_table_by_name: got table with markets')
                 return markets_list
 
     logging.info('get_market_table_by_name: cant get table with markets')
@@ -448,13 +427,15 @@ def collect_total_str(text, total_value):
 
 @logger_info_wrapper
 def check_coupon_coeff(event, webdriver_mar):
-    wait_1 = WebDriverWait(webdriver_mar, 1)
     wait_2 = WebDriverWait(webdriver_mar, 2)
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
     event.status = 'Coupon coeff will be updated in coupon'
-    coupon_delete_all = wait_2.until(ec.element_to_be_clickable((By.XPATH,'/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
+    try:
+        coupon_delete_all = wait_2.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
+    except TimeoutException:
+        return False
     coupon_delete_all.click()
     time.sleep(1)
     logging.info('Coupon coeff will be updated in coupon')
@@ -478,8 +459,7 @@ def change_language(webdriver_mar):
     """сменить язык на русский"""
     wait_2 = WebDriverWait(webdriver_mar, 2)
 
-    lang_settings_button = wait_2.until(
-        ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]')))
+    lang_settings_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]')))
     lang_settings_button.click()
     logging.info('change_language: found and click change language button')
     time.sleep(1)
@@ -487,11 +467,9 @@ def change_language(webdriver_mar):
     close_bk_message(webdriver_mar)
     close_promo_message(webdriver_mar)
 
-    languages_rus_button = wait_2.until(ec.element_to_be_clickable(
-        (By.XPATH, '//*[@id="language_form"]/div[2]/div/div[2]/span[6]/span[2]')))
+    languages_rus_button = wait_2.until(ec.element_to_be_clickable((By.XPATH, '//*[@id="language_form"]/div[2]/div/div[2]/span[6]/span[2]')))
     languages_rus_button.click()
-    logging.info(
-        'change_language: found and click change russian language button')
+    logging.info('change_language: found and click change russian language button')
     time.sleep(1)
 
 
@@ -504,8 +482,7 @@ def controller(proc_marathon_bot, proc_message_to_mail):  # TODO dont work
         proc_status = PROC_STATUS_QUELIST.get()
         if proc_status['browser_bot_run']:
             if not proc_marathon_bot.is_alive():
-                proc_marathon_bot = Process(target=start_marathon_bot, name='start_marathon_bot', args=(
-                    EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
+                proc_marathon_bot = Process(target=start_marathon_bot, name='start_marathon_bot', args=(EVENTS_QUEUE, EMAIL_MESSAGE_QUEUE,))
                 proc_marathon_bot.start()
             proc_status['browser_bot_run'] = False
 
@@ -550,8 +527,7 @@ def get_text_TGmessages(message):
         PROC_STATUS_QUELIST.put(qwerty)
 
     else:
-        TELEGRAM_BOT.send_message(
-            message.chat.id, f'bot{CONFIG_JSON["bot_id"]} вас не понимает')
+        TELEGRAM_BOT.send_message(message.chat.id, f'bot{CONFIG_JSON["bot_id"]} вас не понимает')
 
 
 def start_marathon_bot(events_queue, email_message_queue):
@@ -564,7 +540,7 @@ def start_marathon_bot(events_queue, email_message_queue):
     webdriver_mar.get(CONFIG_JSON['marathon_mirror'])
     logging.info("Marathon's page is open")
 
-    # log_in_marathonbet_account(webdriver_mar, email_message_queue)
+    log_in_marathonbet_account(webdriver_mar, email_message_queue)
     webdriver_mar.refresh()
     time.sleep(10)
 
@@ -572,7 +548,8 @@ def start_marathon_bot(events_queue, email_message_queue):
     close_promo_message(webdriver_mar)
     close_bk_message(webdriver_mar)
 
-    change_language(webdriver_mar)
+    if not CONFIG_JSON['ru']:
+        change_language(webdriver_mar)
 
     webdriver_mar.refresh()
     time.sleep(3)
@@ -676,8 +653,7 @@ def start_marathon_bot(events_queue, email_message_queue):
 
         if event.id is None:
             try:
-                event_id = webdriver_mar.find_element_by_class_name(
-                    CATEGORY_CLASS).get_attribute('href')
+                event_id = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException as e:
                 # если событие не найдено через строку поиска, то перейти к следующему
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
@@ -709,14 +685,13 @@ def start_marathon_bot(events_queue, email_message_queue):
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 event.status = EVENT_STATUS.TYPE_NOT_DEFINED
                 continue
-            if event.market_str is None and event.markets_table_name is None:
+            if event.market_str is None and event.markets_table_name is None and not winner and not win_or_draw:
                 if market_value * 100 % 50 == 0:  # обычный тотал или фора
                     if total:
                         market_str = collect_total_str('simple', market_value)
                         markets_table_name = 'Тотал голов'
                     elif handicap:
-                        market_str = collect_handicap_str(
-                            'simple', market_value)
+                        market_str = collect_handicap_str('simple', market_value)
                         markets_table_name = 'Победа с учетом форы'
                 else:
                     if total:
@@ -728,17 +703,16 @@ def start_marathon_bot(events_queue, email_message_queue):
                 event.market_str = market_str
                 event.markets_table_name = markets_table_name
 
-            if market_str is None:
-                tmp = 'cant convert event type into market_str'
-                logging.info(tmp)
-                event.desc = tmp
-                continue
-            if markets_table_name is None:
-                logging.info('cant set markets_table_name')
-                event.desc = 'cant set markets_table_name'
-                continue
+                if event.market_str is None:
+                    tmp = 'cant convert event type into market_str'
+                    logging.info(tmp)
+                    event.desc = tmp
+                    continue
+                if event.markets_table_name is None:
+                    logging.info('cant set markets_table_name')
+                    event.desc = 'cant set markets_table_name'
+                    continue
 
-        market = None
         coupon_coeff = None
         need_to_check_main_market_bar = True
         need_to_check_big_market_bar = False
