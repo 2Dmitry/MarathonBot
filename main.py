@@ -260,18 +260,15 @@ def search_event_by_teams(webdriver_mar, event: Event) -> bool:
     time.sleep(3)
 
     try:
-        search_sport_tab_button = wait_5.until(
-            ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
+        search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException:
         event.status = EVENT_STATUS.NO_SEARCH_RESULTS
-        logging.info(
-            'search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found\n\
-            search_event_by_teams: stop')
+        logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')
+        logging.info('search_event_by_teams: stop')
         # TODO ну тут надо сделать уведомление, что ниче не найдено
         return False
     search_sport_tab_button.click()
-    logging.info(
-        'search_event_by_teams: Search sports tab button found and click')
+    logging.info('search_event_by_teams: Search sports tab button found and click')
     time.sleep(2)
     return True
 
@@ -286,7 +283,7 @@ def show_more_markets_or_do_nothing(webdriver_mar):
     except TimeoutException:  # штатная ситуация, означает что линия "узкая"
         logging.info('show_more_markets_or_do_nothing: Event more button not found')
         logging.info('show_more_markets_or_do_nothing: stop')
-        return
+        return False
     logging.info('show_more_markets_or_do_nothing: Event more button found and click')
     time.sleep(1)
 
@@ -434,11 +431,11 @@ def check_coupon_coeff(event, webdriver_mar):
     event.status = 'Coupon coeff will be updated in coupon'
     try:
         coupon_delete_all = wait_2.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
+        coupon_delete_all.click()
     except TimeoutException:
-        return False
-    coupon_delete_all.click()
+        pass
+
     time.sleep(1)
-    logging.info('Coupon coeff will be updated in coupon')
     webdriver_mar.refresh()
     time.sleep(2)
     try:
@@ -756,7 +753,11 @@ def start_marathon_bot(events_queue, email_message_queue):
                     need_to_check_big_market_bar = True
 
             if need_to_check_big_market_bar:
-                show_more_markets_or_do_nothing(webdriver_mar)
+                if not show_more_markets_or_do_nothing(webdriver_mar):
+                    event.status = EVENT_STATUS.MARKET_NOT_FOUND
+                    logging.info('Put event in QUEUE')
+                    logging.info(EVENT_STATUS.MARKET_NOT_FOUND)
+                    break
                 markets_list.extend(get_markets_table_by_name(webdriver_mar, event.markets_table_name))
                 if len(markets_list) == 0:  # входит в if в том случае, если не найдена таблица с рынками, например таблицы с Тоталами нет в принципе
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
@@ -786,6 +787,7 @@ def start_marathon_bot(events_queue, email_message_queue):
             try:
                 coupon_coeff = float(coupon_coeff.text[coupon_coeff.text.find(':') + 2:])
             except ValueError:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
+                logging.info('Coupon coeff was be updated in coupon')
                 check_coupon_coeff(event, webdriver_mar)
                 continue
             event.coupon_coeff = coupon_coeff
