@@ -72,7 +72,7 @@ except FileNotFoundError as e:
 # ==================<Телеграм бот>=====================================================
 # инициализировать строго после чтения конфиг файла
 TELEGRAM_BOT = telebot.TeleBot(CONFIG_JSON['token'])
-# ==================</Телеграм бот>=====================================================
+# ==================</Телеграм бот>====================================================
 
 
 def logger_info_wrapper(func):
@@ -292,6 +292,7 @@ def show_more_markets_or_do_nothing(webdriver_mar):
     logging.info('show_more_markets_or_do_nothing: Event more button found and click')
     time.sleep(1)
     logging.info('show_more_markets_or_do_nothing: stop')
+    return True
 
 
 @logger_info_wrapper
@@ -502,7 +503,9 @@ def get_text_TGmessages(message):
         TELEGRAM_BOT.send_message(message.chat.id, CONFIG_JSON["bot_id"])
 
     elif ';' in message.text:  # если пришло именно событие в сообщении, значит после вида спорта должна обязательно стоять ";"
-        event = Event(message.text, message.date)
+        event = Event(message.text, message.date, CONFIG_JSON['event_id'])
+        CONFIG_JSON['event_id'] += 1
+        update_config_file()
         EVENTS_QUEUE.put_nowait(event)
         logging.info('Put event in QUEUE')
         TELEGRAM_BOT.send_message(message.chat.id, f'bot{CONFIG_JSON["bot_id"]} получил событие')
@@ -648,9 +651,9 @@ def start_marathon_bot(events_queue, email_message_queue):
         if not search_event_by_teams(webdriver_mar, event):
             continue
 
-        if event.id is None:
+        if event.id_in_marathon is None:
             try:
-                event_id = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
+                id_in_marathon = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException as e:
                 # если событие не найдено через строку поиска, то перейти к следующему
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
@@ -658,7 +661,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 logging.info('Event isnot on the Sports tab')
                 logging.info(str(e))
                 continue
-            event.id = event_id[event_id.find('+-+') + 3:]
+            event.id_in_marathon = id_in_marathon[id_in_marathon.find('+-+') + 3:]
 
         if event.time_event_start is None:
             try:

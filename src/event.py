@@ -20,25 +20,27 @@ class EVENT_STATUS(Enum):
     
 
 class Event:
-    def __init__(self, text: str, tg_message_unix_date: datetime) -> None:
-        self.id = None
-        self.date_bet_accept = None 
-        self.time_event_start = None
+    def __init__(self, text: str, tg_message_unix_date: datetime, event_id: int) -> None:
+        self.id = event_id
+        self.status = EVENT_STATUS.NEW
+        self.id_in_marathon = None
+        self.date_message_send = tg_message_unix_date
+        self.date_added = datetime.now().strftime(DATE_FORMAT)
+        self.date_last_try = '0000-00-00_00-00-00'
+        self.date_bet_accept = None
         self.processing_time = None
         self.desc = None
+        self.time_event_start = None
+        self.__parse_text(text)
         self.markets_table_name = None
         self.winner_team = None
         self.market_str = None
         self.coupon_coeff = None
         self.history_coeff = []
 
-        self.status = EVENT_STATUS.NEW
-        self.date_message_send = tg_message_unix_date
-        self.date_added = datetime.now().strftime(DATE_FORMAT)
-        self.date_last_try = '0000-00-00_00-00-00'
-        logging.info(f'Bot takes event: {self.date_message_send}')
-        self.__parse_text(text)
-        print(self.__dict__, '\n')
+        logging.info(f'Bot takes event: {self.id} = {self.type} = {self.coeff}')
+        print(self.id, ' = ', self.type, ' = ', self.coeff, '\n')
+        #print(self.__dict__, '\n')
 
     def __parse_text(self, text: str) -> None:
         self.sport = text[:text.find(';')]
