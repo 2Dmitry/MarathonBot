@@ -429,7 +429,7 @@ def check_coupon_coeff(event, webdriver_mar):
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-    event.status = 'Coupon coeff will be updated in coupon'
+    event.status = 'Coupon coeff will be updated in coupon' # TODO класс не возвращается обратно, редактирутеся копия данного класса, либо делать ретерн объекта класса, либо статус вне функции присваивать
     try:
         coupon_delete_all = wait_2.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
         coupon_delete_all.click()
@@ -443,12 +443,12 @@ def check_coupon_coeff(event, webdriver_mar):
         search_sport_tab_button = wait_5.until(ec.element_to_be_clickable((By.XPATH, SEARCH_SPORTS_TAB_BUTTON_XPATH)))
     except TimeoutException:
         event.status = EVENT_STATUS.NO_SEARCH_RESULTS  # не найдено ни одного матча соответствующего поиску
-        logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')
+        logging.info('check_coupon_coeff: Cannot click on the button (search_sport_tab_button) because no events were found')
         # TODO ну тут надо сделать уведомление, что ниче не найдено, т.к. это странно, если событие пришло, значит что-то должно быть найдено, иначе ошибка в парсере
-        logging.info('search_event_by_teams: stop')
+        logging.info('check_coupon_coeff: stop')
         return False
     search_sport_tab_button.click()
-    logging.info('search_event_by_teams: Search sports tab button found and click')
+    logging.info('check_coupon_coeff: Search sports tab button found and click')
     time.sleep(2)
 
 
@@ -678,14 +678,14 @@ def start_marathon_bot(events_queue, email_message_queue):
         market_str = None
 
         if total or handicap:
-            try:
-                market_value = float(event.type[event.type.find('(') + 1:event.type.find(')')])
-            except ValueError:
-                logging.info('Event type not defined')
-                event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-                event.status = EVENT_STATUS.TYPE_NOT_DEFINED
-                continue
             if event.market_str is None and event.markets_table_name is None and not winner and not win_or_draw:
+                try:
+                    market_value = float(event.type[event.type.find('(') + 1:event.type.find(')')])
+                except ValueError:
+                    logging.info(EVENT_STATUS.TYPE_NOT_DEFINED)
+                    event.date_last_try = datetime.now().strftime(DATE_FORMAT)
+                    event.status = EVENT_STATUS.TYPE_NOT_DEFINED
+                    continue
                 if market_value * 100 % 50 == 0:  # обычный тотал или фора
                     if total:
                         market_str = collect_total_str('simple', market_value)
@@ -799,7 +799,7 @@ def start_marathon_bot(events_queue, email_message_queue):
             break
 
         if event.status == EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET or event.status == EVENT_STATUS.MARKET_NOT_FOUND or event.status == EVENT_STATUS.MARKET_TABLE_NOT_FOUND:
-            continue
+            continue #TODO быдлокод
 
         if (event.coeff - 0.2) > event.coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
             event.date_last_try = datetime.now().strftime(DATE_FORMAT)
