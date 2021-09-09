@@ -19,6 +19,7 @@ from src.event import EVENT_STATUS, Event
 from src.page_elements import *
 from src.utils import get_driver, logger_info_wrapper
 
+# BUG: переделать/добавить тотал/гандикап в азиатский_тотал/гандикап, а то везде используется просто тотал и дополнительная лишняя проверка на название таблицы рынков
 # BUG: лучше не отправлять два события одновременно
 # BUG: бот не работает если свернута кнопка купона P.S. знаю, обычно она не свернута
 
@@ -42,7 +43,6 @@ MYSELF_CHAT_ID = 477446257
 MASTERS = ['milovdd@mail.ru', 'pozdnyakov.aleksey.m@gmail.com', 'panamanagolve@gmail.com']
 # ==============================</EMAIL>=============================
 
-# создаем необходимые папки
 os.makedirs(LOGS_PATH, exist_ok=True)
 os.makedirs(BETS_PATH, exist_ok=True)
 
@@ -54,8 +54,6 @@ logging.getLogger('selenium.webdriver.remote.remote_connection').setLevel(loggin
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.debug('Start')
 
-# читаем конфиг файл
-# TODO: завернуть это в функцию
 try:
     with open('config.json', encoding=ENCODING) as f:
         CONFIG_JSON = json.load(f)
@@ -190,8 +188,6 @@ def close_bk_message(webdriver_mar) -> None:
     try:
         message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_BK_MESSAGE_BUTTON_CLASS)))
     except TimeoutException:
-        # сообщений/уведомлений от букера нет, закрывать окно не надо
-        # TODO может ли быть два окна подряд? хз..хз...
         logging.info('close_bk_message: No message from a bookmaker')
         return
 
@@ -210,8 +206,7 @@ def close_promo_message(webdriver_mar) -> None:
     try:
         message_close_button = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, CLOSE_PROMO_MESSAGE_BUTTON_CLASS)))
     except TimeoutException:
-        logging.info('close_promo_message: No promo message from a bookmaker')  # сообщений/уведомлений от букера нет, закрывать окно не надо
-        # TODO может ли быть два окна подряд? хз..хз...
+        logging.info('close_promo_message: No promo message from a bookmaker')
         return
     message_close_button.click()
     logging.info('close_promo_message: Close promo message button found and click')
@@ -377,7 +372,7 @@ def check_coupon_coeff(event, webdriver_mar):
     wait_5 = WebDriverWait(webdriver_mar, 5)
 
     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-    event.status = 'Coupon coeff will be updated in coupon'  # TODO класс не возвращается обратно, редактирутеся копия данного класса, либо делать ретерн объекта класса, либо статус вне функции присваивать
+    event.status = 'Coupon coeff will be updated in coupon'
     try:
         coupon_delete_all = wait_2.until(ec.element_to_be_clickable((By.XPATH, '/html/body/div[12]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/table[2]/tbody/tr[1]/td[1]/span')))
         coupon_delete_all.click()
@@ -395,10 +390,11 @@ def check_coupon_coeff(event, webdriver_mar):
         logging.info('check_coupon_coeff: Cannot click on the button (search_sport_tab_button) because no events were found')
         # TODO ну тут надо сделать уведомление, что ниче не найдено, т.к. это странно, если событие пришло, значит что-то должно быть найдено, иначе ошибка в парсере
         logging.info('check_coupon_coeff: stop')
-        return False
+        return event
     search_sport_tab_button.click()
     logging.info('check_coupon_coeff: Search sports tab button found and click')
     time.sleep(2)
+    return event
 
 
 @logger_info_wrapper
@@ -603,6 +599,9 @@ def start_marathon_bot(events_queue, email_message_queue):
         need_to_check_main_market_bar = True
         need_to_check_big_market_bar = False
         while True:
+            if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:  # TODO это тупо (1)
+                break
+
             try:
                 coupon_delete_all = wait_1.until(ec.element_to_be_clickable((By.CLASS_NAME, 'button.btn-remove')))
                 coupon_delete_all.click()
@@ -680,9 +679,9 @@ def start_marathon_bot(events_queue, email_message_queue):
             coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # BUG находит только кэф первого исхода в купоне (по идее)
             try:
                 coupon_coeff = float(coupon_coeff.text[coupon_coeff.text.find(':') + 2:])
-            except ValueError:  # TODO это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
+            except ValueError:  # это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
                 logging.info('Coupon coeff has been updated in coupon')
-                check_coupon_coeff(event, webdriver_mar)
+                event = check_coupon_coeff(event, webdriver_mar)  # TODO это тупо (1)
                 continue
             event.coupon_coeff = coupon_coeff
             event.history_coeff.append(datetime.now().strftime('%H:%M:%S'))
@@ -696,6 +695,9 @@ def start_marathon_bot(events_queue, email_message_queue):
             continue
 
         if event.status == EVENT_STATUS.MARKET_TABLE_NOT_FOUND:
+            continue
+
+        if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:  # TODO это тупо (1)
             continue
 
         if (event.coeff - 0.2) <= event.coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
