@@ -1,7 +1,18 @@
+import logging
+
 from selenium import webdriver
 import re
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException
+
+
+def logger_info_wrapper(func):
+    def func_wrapper(*args):  # def func_wrapper(*args, **kwargs):
+        logging.info(f'enter to function {func.__name__}')
+        z = func(*args)
+        logging.info(f'out from function {func.__name__}')
+        return z
+    return func_wrapper
 
 
 class WaitForTextMatch(object):
