@@ -19,6 +19,8 @@ from src.event import EVENT_STATUS, Event
 from src.page_elements import *
 from src.utils import get_driver, logger_info_wrapper
 
+
+# TODO BUG:  функциях/классах не должно быть логов и принтов, вытащить их в мэин
 # BUG: переделать/добавить тотал/гандикап в азиатский_тотал/гандикап, а то везде используется просто тотал и дополнительная лишняя проверка на название таблицы рынков
 # BUG: лучше не отправлять два события одновременно
 # BUG: бот не работает если свернута кнопка купона P.S. знаю, обычно она не свернута
@@ -560,15 +562,16 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.desc = EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN
                     event.status = EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN
                     logging.info(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
+                    print(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
                     continue
             print(f'Browser get event from queue: {event.id} | {event.team1_eng} | {event.team2_eng} | {event.type} | {event.coeff}')
             event.date_last_try = datetime.now().strftime(DATE_FORMAT)
             event.status = EVENT_STATUS.IN_PROGRESS
 
-        rnd = randint(0, 5)
+        rnd = randint(0, 10)
+        logging.info(f'sleep {rnd} sec')
+        print(f'sleep {rnd} sec')
         time.sleep(rnd)
-        logging.info(f'random time sleep: {rnd}')
-        print(f'random time sleep: {rnd}')
 
         event = search_event_by_teams(webdriver_mar, event)
 
@@ -582,6 +585,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 event.status = EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN
                 logging.info(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
+                print(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
                 continue
             event.id = event_id[event_id.find('+-+') + 3:]
 
@@ -592,6 +596,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 event.status = EVENT_STATUS.NO_SEARCH_RESULTS
                 logging.info(EVENT_STATUS.NO_SEARCH_RESULTS)
+                print(EVENT_STATUS.NO_SEARCH_RESULTS)
                 continue
 
         markets_list = []
@@ -620,6 +625,8 @@ def start_marathon_bot(events_queue, email_message_queue):
                             need_to_check_main_market_bar = True
                             need_to_check_big_market_bar = True
                             event.status = EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET
+                            logging.info(EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET)
+                            print(EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET)
                             break
                         elif event.type_text == 'winner' or event.type_text == 'win_or_draw':
                             market.click()
@@ -638,6 +645,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                             need_to_check_big_market_bar = True
                             event.status = EVENT_STATUS.MARKET_NOT_FOUND
                             logging.info(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the main market bar')
+                            print(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the main market bar')
                     except ElementNotInteractableException:
                         continue
                 else:
@@ -649,6 +657,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_NOT_FOUND
                     logging.info(EVENT_STATUS.MARKET_NOT_FOUND)
+                    print(EVENT_STATUS.MARKET_NOT_FOUND)
                     logging.info('Put event in QUEUE')
                     events_queue.put_nowait(event)
                     break
@@ -657,6 +666,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_TABLE_NOT_FOUND
                     logging.info(EVENT_STATUS.MARKET_TABLE_NOT_FOUND)
+                    print(EVENT_STATUS.MARKET_TABLE_NOT_FOUND)
                     logging.info('Put event in QUEUE')
                     events_queue.put_nowait(event)
                     break
@@ -672,14 +682,15 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_NOT_FOUND
                     logging.info(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the big bar')
+                    print(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the big bar')
                     events_queue.put_nowait(event)
                     logging.info('Put event in QUEUE')
                     break
 
-            coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # BUG находит только кэф первого исхода в купоне (по идее)
+            coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # BUG находит кэф только первого исхода в купоне (по идее)
             try:
                 coupon_coeff = float(coupon_coeff.text[coupon_coeff.text.find(':') + 2:])
-            except ValueError:  # это исключение срабатывает в том случае, если коэффициент обновился уже будучи в купоне. НАДО: очистить купон, нажать на кэф снова.
+            except ValueError:  # коэффициент обновился уже будучи в купоне
                 logging.info('Coupon coeff has been updated in coupon')
                 event = check_coupon_coeff(event, webdriver_mar)  # TODO это тупо (1)
                 continue
@@ -700,35 +711,15 @@ def start_marathon_bot(events_queue, email_message_queue):
         if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:  # TODO это тупо (1)
             continue
 
-        if (event.coeff - 0.2) <= event.coupon_coeff:  # коэффициент в купоне не удовлетворяет условиям, событие будет отправлено в конец очереди
-            event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-            event.status = EVENT_STATUS.NOT_TRY_COUPON_COEFF
-            events_queue.put_nowait(event)
-            logging.info(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}.')
-            logging.info('Put event in QUEUE')
-            continue
-
-        try:
-            wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
-            logging.info('you are logged in')
-        except TimeoutException:
-            if CONFIG_JSON['password'] != "":
-                email_message_queue.put_nowait(f'you are not logged in, date: {datetime.now().strftime(DATE_FORMAT)}')
-                logging.info(f'you are not logged in, date: {datetime.now().strftime(DATE_FORMAT)}')
-                webdriver_mar.refresh()
-                event.coupon_coeff = coupon_coeff
-                event.date_bet_accept = datetime.now().strftime(DATE_FORMAT)
-                event.status = EVENT_STATUS.BET_ACCEPTED
-                event.desc = 'you are not logged in'
-                logging.info(EVENT_STATUS.BET_ACCEPTED)
-                time.sleep(randint(0, 5))
-            continue
-
         max_bet_amount = None
         try:
-            max_bet_amount = float(webdriver_mar.find_element_by_xpath('/html/body/div[11]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/div[1]/div[2]/table/tbody/tr/td[2]/div[2]/span[1]').text)
+            max_bet_amount = webdriver_mar.find_element_by_xpath('/html/body/div[11]/div/div[3]/div/div/div[2]/div/div[1]/div/div[1]/div[7]/table/tbody/tr/td/div/div[1]/div[2]/table/tbody/tr/td[2]/div[2]/span[1]').text
+            max_bet_amount = max_bet_amount.replace(',', '')
+            max_bet_amount = float(max_bet_amount)
             event.max_bet_amount.append(datetime.now().strftime('%H:%M:%S'))
             event.max_bet_amount.append(max_bet_amount)
+            logging.info(f'max bet amount is {max_bet_amount}')
+            print(f'max bet amount is {max_bet_amount}')
         except Exception as ex:
             logging.info(ex)
             print(ex)
@@ -738,11 +729,41 @@ def start_marathon_bot(events_queue, email_message_queue):
             event.date_last_try = datetime.now().strftime(DATE_FORMAT)
             event.status = EVENT_STATUS.CUT
             logging.info(EVENT_STATUS.CUT)
-            rnd = randint(0, 5)
-            logging.info(rnd)
-            print(rnd)
+            print(EVENT_STATUS.CUT)
+            rnd = randint(5, 10)
+            logging.info(f'sleep {rnd} sec')
+            print(f'sleep {rnd} sec')
             time.sleep(rnd)
             continue
+
+        if (event.coeff - 0.2) > event.coupon_coeff:
+            event.date_last_try = datetime.now().strftime(DATE_FORMAT)
+            logging.info(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}. {event.coeff - 0.2} > {event.coupon_coeff}')
+            print(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}. {event.coeff - 0.2} > {event.coupon_coeff}')
+            event.status = EVENT_STATUS.NOT_TRY_COUPON_COEFF
+            print(EVENT_STATUS.NOT_TRY_COUPON_COEFF)
+            logging.info('Put event in QUEUE')
+            events_queue.put_nowait(event)
+            continue
+
+        try:
+            wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, EXIT_BUTTON_CLASS)))
+        except TimeoutException:
+            email_message_queue.put_nowait(f'you are logged out, date: {datetime.now().strftime(DATE_FORMAT)}')
+            logging.info(f'you are logged out, date: {datetime.now().strftime(DATE_FORMAT)}')
+            webdriver_mar.refresh()
+            event.coupon_coeff = coupon_coeff
+            event.date_bet_accept = datetime.now().strftime(DATE_FORMAT)
+            event.status = EVENT_STATUS.FAKE_BET_ACCEPTED
+            event.desc = 'you are logged out'
+            logging.info(EVENT_STATUS.FAKE_BET_ACCEPTED)
+            print(EVENT_STATUS.FAKE_BET_ACCEPTED)
+            rnd = randint(2, 10)
+            logging.info(f'sleep {rnd} sec')
+            print(f'sleep {rnd} sec')
+            time.sleep(rnd)
+            continue
+        logging.info('you are logged in')
 
         # try:
         stake_field = wait_5.until(ec.element_to_be_clickable((By.CLASS_NAME, STAKE_FIELD_CLASS)))  # в купоне вбиваем сумму ставки
@@ -750,7 +771,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         stake_field.send_keys(CONFIG_JSON['bet_mount_rub'])
         time.sleep(1)
         logging.info(f'Stake field found and bet amount ({CONFIG_JSON["bet_mount_rub"]}) entered')
-        # except Exception as ex:  # TODO быдлокод
+        # except Exception as ex:  # быдлокод
         #     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
         #     event.status = 'Cant print bet mount in stake field'
         #     logging.info('Cant print bet mount in stake field')
@@ -764,7 +785,7 @@ def start_marathon_bot(events_queue, email_message_queue):
         stake_accept_button.click()
         time.sleep(2)
         logging.info('Accept button found and click')
-        # except Exception as ex:  # TODO быдлокод
+        # except Exception as ex:  # быдлокод
         #     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
         #     event.status = 'Cant click accept button'
         #     logging.info('Cant click accept button')
@@ -773,39 +794,40 @@ def start_marathon_bot(events_queue, email_message_queue):
         #     logging.info(str(ex))
         #     continue
 
-        try:
-            notification_text = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, 'messenger.hidden.simplemodal-data'))).text
-        except Exception as ex:  # TODO быдлокод
-            event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-            event.status = 'wtf'
-            print('wtf')
-            logging.info('wtf')
-            logging.info('Put event in QUEUE')
-            events_queue.put_nowait(event)
-            logging.info(str(ex))
-            time.sleep(600)
-            continue
-
-        if notification_text.find('Пари принято') != -1:
+        # try:
+        notification_text = wait_3.until(ec.element_to_be_clickable((By.CLASS_NAME, 'messenger.hidden.simplemodal-data'))).text
+        # except Exception as ex:  # быдлокод
+        #     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
+        #     event.status = 'wtf'
+        #     print('wtf')
+        #     logging.info('wtf')
+        #     logging.info('Put event in QUEUE')
+        #     events_queue.put_nowait(event)
+        #     logging.info(str(ex))
+        #     time.sleep(600)
+        #     continue
+        if notification_text.find('Пари принято') != -1:  # на eu версии сайта возможно другое уведомление
             webdriver_mar.refresh()
             event.date_bet_accept = datetime.now().strftime(DATE_FORMAT)
             event.status = EVENT_STATUS.BET_ACCEPTED
             logging.info(EVENT_STATUS.BET_ACCEPTED)
-            rnd = randint(0, 5)
-            logging.info(rnd)
-            print(rnd)
+            print(EVENT_STATUS.BET_ACCEPTED)
+            rnd = randint(2, 10)
+            logging.info(f'sleep {rnd} sec')
+            print(f'sleep {rnd} sec')
             time.sleep(rnd)
             continue
-        elif notification_text.find('Повторная ставка в пари') != -1:
+        elif notification_text.find('Повторная ставка в пари') != -1:  # на eu версии сайта возможно другое уведомление
             webdriver_mar.refresh()
             event.date_last_try = datetime.now().strftime(DATE_FORMAT)
             event.status = EVENT_STATUS.RE_BET
             logging.info(EVENT_STATUS.RE_BET)
+            print(EVENT_STATUS.RE_BET)
             logging.info('Put event in QUEUE')
             events_queue.put_nowait(event)
-            rnd = randint(0, 5)
-            logging.info(rnd)
-            print(rnd)
+            rnd = randint(5, 10)
+            logging.info(f'sleep {rnd} sec')
+            print(f'sleep {rnd} sec')
             time.sleep(rnd)
             continue
 
