@@ -241,10 +241,10 @@ def search_event_by_teams(webdriver_mar, event: Event):
         event.date_last_try = datetime.now().strftime(DATE_FORMAT)
         event.status = EVENT_STATUS.NO_SEARCH_RESULTS
         logging.info('search_event_by_teams: Cannot click on the button (search_sport_tab_button) because no events were found')
-        logging.info('search_event_by_teams: stop')
         # TODO ну тут надо сделать уведомление, что ниче не найдено
         return event
     search_sport_tab_button.click()
+
     logging.info('search_event_by_teams: Search sports tab button found and click')
     time.sleep(2)
     return event
@@ -259,7 +259,6 @@ def show_more_markets_or_do_nothing(webdriver_mar):
         event_more_button.click()
     except TimeoutException:  # штатная ситуация, означает что линия "узкая"
         logging.info('show_more_markets_or_do_nothing: Event more button not found')
-        logging.info('show_more_markets_or_do_nothing: stop')
         return False
     logging.info('show_more_markets_or_do_nothing: Event more button found and click')
     time.sleep(1)
@@ -527,15 +526,20 @@ def start_marathon_bot(events_queue, email_message_queue):
             event = events_queue.get()
 
             if event.status == EVENT_STATUS.TYPE_NOT_DEFINED:
+                logging.info(event.status)
+                print(event.status)
                 continue
 
             if event.status == EVENT_STATUS.SPORT_NOT_DEFINED:
+                logging.info(event.status)
+                print(event.status)
                 continue
 
             if event.status == EVENT_STATUS.CANT_CONSTRUCT_STRING:
+                logging.info(event.status)
+                print(event.status)
                 continue
 
-            logging.info(f'Browser get event from queue: {event.id} | {event.team1_eng} | {event.team2_eng} | {event.type} | {event.coeff}')
             date_now = convert_date_into_seconds(datetime.now().strftime(DATE_FORMAT))
             diff_sec = date_now - convert_date_into_seconds(event.date_last_try)
             if event.time_event_start is not None:
@@ -548,8 +552,9 @@ def start_marathon_bot(events_queue, email_message_queue):
                     # так как freq_update_sec еще не прошло с момента последней попытки И
                     # И времени до начала события больше чем time_before_the_start
                     event.desc = 'insufficient time difference, pls wait'
-                    events_queue.put_nowait(event)
                     logging.info(f'{diff_sec}<{CONFIG_JSON["freq_update_sec"]} and {diff_sec2}>{CONFIG_JSON["time_before_the_start"]} = TRUE. Event put back')
+                    logging.info('Put event in QUEUE')
+                    events_queue.put_nowait(event)
                     time.sleep(2)
                     continue
                 if diff_sec > CONFIG_JSON["freq_update_sec"]:
@@ -561,9 +566,10 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.desc = EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN
                     event.status = EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN
-                    logging.info(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
-                    print(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
+                    logging.info(event.status)
+                    print(event.status)
                     continue
+            logging.info(f'Browser get event from queue: {event.id} | {event.team1_eng} | {event.team2_eng} | {event.type} | {event.coeff}')
             print(f'Browser get event from queue: {event.id} | {event.team1_eng} | {event.team2_eng} | {event.type} | {event.coeff}')
             event.date_last_try = datetime.now().strftime(DATE_FORMAT)
             event.status = EVENT_STATUS.IN_PROGRESS
@@ -576,6 +582,8 @@ def start_marathon_bot(events_queue, email_message_queue):
         event = search_event_by_teams(webdriver_mar, event)
 
         if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:
+            logging.info(event.status)
+            print(event.status)
             continue
 
         if event.id is None:
@@ -584,8 +592,8 @@ def start_marathon_bot(events_queue, email_message_queue):
             except NoSuchElementException:
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 event.status = EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN
-                logging.info(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
-                print(EVENT_STATUS.EVENT_HAS_ALREADY_BEGUN)
+                logging.info(event.status)
+                print(event.status)
                 continue
             event.id = event_id[event_id.find('+-+') + 3:]
 
@@ -595,8 +603,8 @@ def start_marathon_bot(events_queue, email_message_queue):
             except NoSuchElementException:
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 event.status = EVENT_STATUS.NO_SEARCH_RESULTS
-                logging.info(EVENT_STATUS.NO_SEARCH_RESULTS)
-                print(EVENT_STATUS.NO_SEARCH_RESULTS)
+                logging.info(event.status)
+                print(event.status)
                 continue
 
         markets_list = []
@@ -605,6 +613,8 @@ def start_marathon_bot(events_queue, email_message_queue):
         need_to_check_big_market_bar = False
         while True:
             if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:  # TODO это тупо (1)
+                logging.info(event.status)
+                print(event.status)
                 break
 
             try:
@@ -625,18 +635,18 @@ def start_marathon_bot(events_queue, email_message_queue):
                             need_to_check_main_market_bar = True
                             need_to_check_big_market_bar = True
                             event.status = EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET
-                            logging.info(EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET)
-                            print(EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET)
+                            logging.info(event.status)
+                            print(event.status)
                             break
                         elif event.type_text == 'winner' or event.type_text == 'win_or_draw':
                             market.click()
-                            logging.info(f'Market found and click: {market.text}')
+                            logging.info(f'Market found in the main market bar and click: {market.text}')
                             time.sleep(1)
                             need_to_check_main_market_bar = True
                             need_to_check_big_market_bar = False
                         elif market.text.find(event.market_str) != -1:
                             market.click()
-                            logging.info(f'Market found and click: {market.text}')
+                            logging.info(f'Market found in the main market bar and click: {market.text}')
                             time.sleep(1)
                             need_to_check_main_market_bar = True
                             need_to_check_big_market_bar = False
@@ -655,27 +665,23 @@ def start_marathon_bot(events_queue, email_message_queue):
             if need_to_check_big_market_bar:
                 if not show_more_markets_or_do_nothing(webdriver_mar):
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-                    event.status = EVENT_STATUS.MARKET_NOT_FOUND
-                    logging.info(EVENT_STATUS.MARKET_NOT_FOUND)
-                    print(EVENT_STATUS.MARKET_NOT_FOUND)
-                    logging.info('Put event in QUEUE')
-                    events_queue.put_nowait(event)
+                    event.status = EVENT_STATUS.BIG_BAR_NOT_FOUND
+                    logging.info(event.status)
+                    print(event.status)
                     break
                 markets_list.extend(get_markets_table_by_name(webdriver_mar, event.markets_table_name))
                 if len(markets_list) == 0:  # входит в if в том случае, если не найдена таблица с рынками, например таблицы с Тоталами нет в принципе
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_TABLE_NOT_FOUND
-                    logging.info(EVENT_STATUS.MARKET_TABLE_NOT_FOUND)
-                    print(EVENT_STATUS.MARKET_TABLE_NOT_FOUND)
-                    logging.info('Put event in QUEUE')
-                    events_queue.put_nowait(event)
+                    logging.info(event.status)
+                    print(event.status)
                     break
                 winner_team_markets = sort_market_table_by_teamnum(markets_list, event.winner_team)
                 while len(winner_team_markets) != 0:
                     market = winner_team_markets.pop()
                     if market.text.find(event.market_str) != -1:
                         market.click()
-                        logging.info(f'Market found and click: {market.text}')
+                        logging.info(f'Market found in the big bar and click: {market.text}')
                         time.sleep(1)
                         break
                 else:
@@ -683,8 +689,6 @@ def start_marathon_bot(events_queue, email_message_queue):
                     event.status = EVENT_STATUS.MARKET_NOT_FOUND
                     logging.info(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the big bar')
                     print(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the big bar')
-                    events_queue.put_nowait(event)
-                    logging.info('Put event in QUEUE')
                     break
 
             coupon_coeff = wait_2.until(ec.element_to_be_clickable((By.CLASS_NAME, 'choice-price')))  # BUG находит кэф только первого исхода в купоне (по идее)
@@ -700,12 +704,23 @@ def start_marathon_bot(events_queue, email_message_queue):
             break
 
         if event.status == EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET:
+            events_queue.put_nowait(event)
+            logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.MARKET_NOT_FOUND:
+            events_queue.put_nowait(event)
+            logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.MARKET_TABLE_NOT_FOUND:
+            events_queue.put_nowait(event)
+            logging.info('Put event in QUEUE')
+            continue
+
+        if event.status == EVENT_STATUS.BIG_BAR_NOT_FOUND:
+            events_queue.put_nowait(event)
+            logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:  # TODO это тупо (1)
@@ -730,6 +745,8 @@ def start_marathon_bot(events_queue, email_message_queue):
             event.status = EVENT_STATUS.CUT
             logging.info(EVENT_STATUS.CUT)
             print(EVENT_STATUS.CUT)
+            logging.info('Put event in QUEUE')
+            events_queue.put_nowait(event)
             rnd = randint(5, 10)
             logging.info(f'sleep {rnd} sec')
             print(f'sleep {rnd} sec')

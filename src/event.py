@@ -59,6 +59,7 @@ class EVENT_STATUS(Enum):
     FAKE_BET_ACCEPTED = 13
     RE_BET = 14
     CUT = 15
+    BIG_BAR_NOT_FOUND = 16
 
     def __str__(self) -> str:
         return self.name.lower().replace('_', ' ')
@@ -109,7 +110,6 @@ class Event:
         elif self.sport in ['Футбол', 'Хоккей']:
             self.teams = self.team1 + ' - ' + self.team2
         else:
-            logging.info(EVENT_STATUS.SPORT_NOT_DEFINED)
             self.date_last_try = datetime.now().strftime(DATE_FORMAT)
             self.status = EVENT_STATUS.SPORT_NOT_DEFINED
             return
@@ -140,16 +140,12 @@ class Event:
             if self.type[2] == '1' or self.type[2] == '2':
                 self.winner_team = int(self.type[2])
             else:
-                logging.info(f'Event handicap {EVENT_STATUS.TYPE_NOT_DEFINED}')
-                print(f'Event handicap {EVENT_STATUS.TYPE_NOT_DEFINED}')
                 self.date_last_try = datetime.now().strftime(DATE_FORMAT)
                 self.status = EVENT_STATUS.TYPE_NOT_DEFINED
                 return
         else:
             self.date_last_try = datetime.now().strftime(DATE_FORMAT)
             self.status = EVENT_STATUS.TYPE_NOT_DEFINED
-            logging.info(EVENT_STATUS.TYPE_NOT_DEFINED)
-            print(EVENT_STATUS.TYPE_NOT_DEFINED)
             return
         print(self.type_text)
 
@@ -159,8 +155,6 @@ class Event:
         except ValueError:
             self.date_last_try = datetime.now().strftime(DATE_FORMAT)
             self.status = EVENT_STATUS.TYPE_NOT_DEFINED
-            logging.info(EVENT_STATUS.TYPE_NOT_DEFINED)
-            print(EVENT_STATUS.TYPE_NOT_DEFINED)
             return
         if market_value * 100 % 50 == 0:  # обычный тотал или фора
             if self.type_text == 'total':
@@ -184,13 +178,9 @@ class Event:
         self.markets_table_name = markets_table_name
 
         if self.market_str is None:
-            logging.info(f'{EVENT_STATUS.CANT_CONSTRUCT_STRING} market_str')
-            print(f'{EVENT_STATUS.CANT_CONSTRUCT_STRING} market_str')
             self.status = EVENT_STATUS.CANT_CONSTRUCT_STRING
             return
         if self.markets_table_name is None:
-            logging.info(f'{EVENT_STATUS.CANT_CONSTRUCT_STRING} markets_table_name')
-            print(f'{EVENT_STATUS.CANT_CONSTRUCT_STRING} markets_table_name')
             self.status = EVENT_STATUS.CANT_CONSTRUCT_STRING
             return
 
