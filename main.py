@@ -506,6 +506,7 @@ def start_marathon_bot(events_queue, email_message_queue):
 
     date_now = None
     event = None
+    n = 0
     while True:
         if event is not None:
             if event.status == EVENT_STATUS.BET_ACCEPTED:
@@ -519,8 +520,13 @@ def start_marathon_bot(events_queue, email_message_queue):
 
         if events_queue.empty():
             # TODO добавить каждые 30 минут клики в "пустоту"
-            logging.info('QUEUE is empty')
-            time.sleep(2)
+            if n >= 30:
+                logging.info('QUEUE is empty')
+                time.sleep(2)
+                n = 0
+            else:
+                n += 2
+                time.sleep(2)
             continue
         else:
             event = events_queue.get()
@@ -586,7 +592,7 @@ def start_marathon_bot(events_queue, email_message_queue):
             print(event.status)
             continue
 
-        if event.id is None:
+        if event.id is None:  # TODO вроде как id матча есть на странице поиска, если матч есть в лайве, а ты переключился на вкладку спорт
             try:
                 event_id = webdriver_mar.find_element_by_class_name(CATEGORY_CLASS).get_attribute('href')
             except NoSuchElementException:
@@ -602,7 +608,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                 event.time_event_start = webdriver_mar.find_element_by_class_name('date.date-short').text
             except NoSuchElementException:
                 event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-                event.status = EVENT_STATUS.NO_SEARCH_RESULTS
+                event.status = EVENT_STATUS.EVENT_NOT_FOUND_IN_THE_SPORT_TAB
                 logging.info(event.status)
                 print(event.status)
                 continue
@@ -684,7 +690,7 @@ def start_marathon_bot(events_queue, email_message_queue):
                         logging.info(f'Market found in the big bar and click: {market.text}')
                         time.sleep(1)
                         break
-                else:
+                if len(winner_team_markets) == 0:
                     event.date_last_try = datetime.now().strftime(DATE_FORMAT)
                     event.status = EVENT_STATUS.MARKET_NOT_FOUND
                     logging.info(f'{EVENT_STATUS.MARKET_NOT_FOUND} in the big bar')
@@ -704,26 +710,36 @@ def start_marathon_bot(events_queue, email_message_queue):
             break
 
         if event.status == EVENT_STATUS.COEFFICIENT_DOES_NOT_EXIST_IN_MARKET:
+            logging.info(event.status)
+            print(event.status)
             events_queue.put_nowait(event)
             logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.MARKET_NOT_FOUND:
+            logging.info(event.status)
+            print(event.status)
             events_queue.put_nowait(event)
             logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.MARKET_TABLE_NOT_FOUND:
+            logging.info(event.status)
+            print(event.status)
             events_queue.put_nowait(event)
             logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.BIG_BAR_NOT_FOUND:
+            logging.info(event.status)
+            print(event.status)
             events_queue.put_nowait(event)
             logging.info('Put event in QUEUE')
             continue
 
         if event.status == EVENT_STATUS.NO_SEARCH_RESULTS:  # TODO это тупо (1)
+            logging.info(event.status)
+            print(event.status)
             continue
 
         max_bet_amount = None
@@ -753,10 +769,10 @@ def start_marathon_bot(events_queue, email_message_queue):
             time.sleep(rnd)
             continue
 
+        logging.info(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}. {event.coeff - 0.2} ? {event.coupon_coeff}')
+        print(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}. {event.coeff - 0.2} ? {event.coupon_coeff}')
         if (event.coeff - 0.2) > event.coupon_coeff:
             event.date_last_try = datetime.now().strftime(DATE_FORMAT)
-            logging.info(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}. {event.coeff - 0.2} > {event.coupon_coeff}')
-            print(f'Event.coeff is {event.coeff}. Coupon coeff is {event.coupon_coeff}. {event.coeff - 0.2} > {event.coupon_coeff}')
             event.status = EVENT_STATUS.NOT_TRY_COUPON_COEFF
             print(EVENT_STATUS.NOT_TRY_COUPON_COEFF)
             logging.info('Put event in QUEUE')
