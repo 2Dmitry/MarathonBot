@@ -1,9 +1,9 @@
 import logging
 
-from selenium import webdriver
 import re
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException
+import undetected_chromedriver as uc
 
 
 def logger_info_wrapper(func):
@@ -29,22 +29,28 @@ class WaitForTextMatch(object):
 
 
 def get_driver(path_browser_profile, username):
-    options = webdriver.ChromeOptions()
+    options = uc.ChromeOptions()
     options.add_argument("user-data-dir={}".format(path_browser_profile))
-    options.add_argument("--start-maximized")
-    options.add_experimental_option("excludeSwitches", ["--enable-automation", "ignore-certificate-errors",
+    options.add_argument("window-size=1920,1080")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36")
+    options.add_experimental_option("excludeSwitches", ["--enable-automation",
+                                                        "ignore-certificate-errors",
                                                         "safebrowsing-disable-download-protection",
                                                         "safebrowsing-disable-auto-update",
-                                                        "disable-client-side-phishing-detection", "enable-logging"])
+                                                        "disable-client-side-phishing-detection",
+                                                        "enable-logging"])
+    options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option('useAutomationExtension', False)
-    # options.headless = True
-    driver = webdriver.Chrome(options=options)
+    options.headless = False
+
+    driver = uc.Chrome(options=options)
     open("{}/{}".format(path_browser_profile, username), "w").close()
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": """
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => undefined
-        })
-      """
-    })
+    # driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+    #     "source": """
+    #     Object.defineProperty(navigator, 'webdriver', {
+    #       get: () => undefined
+    #     })
+    #   """
+    # })
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver

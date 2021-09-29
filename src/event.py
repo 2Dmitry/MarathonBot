@@ -61,6 +61,8 @@ class EVENT_STATUS(Enum):
     CUT = 15
     BIG_BAR_NOT_FOUND = 16
     EVENT_NOT_FOUND_IN_THE_SPORT_TAB = 17
+    MARKET_FOUND = 18
+    MARKET_NOT_INTERACTABLE_EXCEPTION = 19
 
     def __str__(self) -> str:
         return self.name.lower().replace('_', ' ')
@@ -69,6 +71,7 @@ class EVENT_STATUS(Enum):
 class Event:
     def __init__(self, text: str, tg_message_unix_date: datetime, event_id: int) -> None:
         self.id = event_id
+        self.match_id = None
         self.status = EVENT_STATUS.NEW
         self.desc = None
         self.date_last_try = '0000-00-00_00-00-00'
@@ -153,7 +156,6 @@ class Event:
         try:
             market_value = float(self.type[self.type.find('(') + 1:self.type.find(')')])
         except ValueError:
-            market_value = ''
             self.status = EVENT_STATUS.TYPE_NOT_DEFINED
             return
         if market_value * 100 % 50 == 0:  # обычный тотал или обычная фора
